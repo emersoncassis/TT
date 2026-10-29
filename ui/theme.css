@@ -131,3 +131,7 @@ pre.xml { background: var(--bg); border: 1px solid var(--border); border-radius:
 code.tok { font: 12px var(--mono); word-break: break-all; background: var(--bg); padding: 6px 8px; border-radius: var(--radius-sm); display: block; margin: 6px 0; border: 1px solid var(--gold-text); }
 .cmdcard .acts { flex-wrap: wrap; }
 .cmdcard .acts button { white-space: nowrap; padding: 4px 10px; }
+
+/* assistant action row: wrap instead of overflowing the drawer */
+.chat .input .row { flex-wrap: wrap; gap: 6px; }
+.chat .input .row button { white-space: nowrap; }

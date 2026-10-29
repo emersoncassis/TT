@@ -277,6 +277,46 @@ function buildTerminal(tab) {
   tab.sendText = (text, run) => { if (ws.readyState === 1) ws.send(enc.encode(run ? text + '\n' : text)); term.focus(); };
 }
 
+/* ---------- voice helpers (microphone, silence detection, speech) ---------- */
+// Records one clip. manual: runs until stop(); otherwise waits for speech, then stops after ~1.4 s of silence.
+async function recordClip({ manual, onState }) {
+  if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('Este navegador não permite gravar áudio aqui. O microfone só funciona em localhost ou em HTTPS.');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch { throw new Error('Sem acesso ao microfone. Libere a permissão do microfone para este endereço.'); }
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  const chunks = []; rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const ac = new (window.AudioContext || window.webkitAudioContext)(); const an = ac.createAnalyser(); an.fftSize = 1024;
+  ac.createMediaStreamSource(stream).connect(an); const buf = new Uint8Array(an.fftSize);
+  let spoke = false, last = Date.now(), cancelled = false, timer = null;
+  const cleanup = () => { clearInterval(timer); stream.getTracks().forEach(t => t.stop()); ac.close().catch(() => {}); };
+  const done = new Promise(res => { rec.onstop = () => { cleanup(); const b = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); res(cancelled || b.size < 1500 || (!manual && !spoke) ? null : b); }; });
+  rec.start(); onState(manual ? 'Gravando… clique em Parar quando terminar.' : 'Ouvindo… pode falar.');
+  const t0 = Date.now();
+  timer = setInterval(() => {
+    an.getByteTimeDomainData(buf); let sum = 0; for (const v of buf) { const d = (v - 128) / 128; sum += d * d; }
+    const loud = Math.sqrt(sum / buf.length) > 0.02;
+    if (loud) { spoke = true; last = Date.now(); }
+    if (!manual && ((spoke && Date.now() - last > 1400) || Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > 60000))) { if (rec.state !== 'inactive') rec.stop(); }
+    if (manual && Date.now() - t0 > 180000 && rec.state !== 'inactive') rec.stop();
+  }, 100);
+  return { done, stop: () => { cancelled = cancelled || false; if (rec.state !== 'inactive') rec.stop(); } };
+}
+
+// Reads the assistant's answer aloud (browser speech, free and local). Code blocks are not read.
+function speak(r) {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window)) return res();
+    let t = (r.reply || '').replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/[*#_>]/g, '').replace(/\s+/g, ' ').trim();
+    if (r.commands && r.commands.length) t += ` Deixei ${r.commands.length} ${r.commands.length === 1 ? 'comando' : 'comandos'} na tela para você revisar.`;
+    if (t.length > 900) t = t.slice(0, 900) + '… o resto está na tela.';
+    const u = new SpeechSynthesisUtterance(t); u.lang = 'pt-BR';
+    const v = speechSynthesis.getVoices().find(x => /^pt[-_]BR/i.test(x.lang)); if (v) u.voice = v;
+    u.onend = u.onerror = () => res(); speechSynthesis.cancel(); speechSynthesis.speak(u);
+  });
+}
+
 /* ---------- AI assistant (suggests only, never executes by itself) ---------- */
 function aiState(tab) { if (!tab.ai) tab.ai = { messages: [], suggestions: [], log: null, sendScreen: true }; return tab.ai; }
 
@@ -309,21 +349,58 @@ function aiPanel(tab) {
     st.suggestions.forEach((sg, i) => { const el = h('div', { class: 'msg' }, h('div', { class: 'muted' }, `Sugerido via ${sg.source}${sg.reason ? ': ' + sg.reason : ''}`), cmdCard(tab, sg.command, sg.readonly), h('div', { class: 'acts', style: 'padding:6px 0 0' }, h('button', { class: 'ghost', onclick: () => { st.suggestions.splice(i, 1); draw(); } }, 'Descartar'))); log.append(el); });
     log.scrollTop = log.scrollHeight;
   };
-  const send = async () => {
-    const text = input.value.trim(); if (!text) return;
-    input.value = ''; st.messages.push({ role: 'user', content: text }); draw();
+  const ask = async text => {
+    st.messages.push({ role: 'user', content: text }); draw();
     const wait = h('div', { class: 'msg muted' }, 'Pensando…'); log.append(wait);
+    let reply = null;
     try {
       const r = await api('/api/ai/chat', { method: 'POST', body: { host_id: tab.host.id, messages: st.messages.map(m => ({ role: m.role, content: m.content })), screen: st.sendScreen ? termScreen(tab.term) : '' } });
-      st.messages.push({ role: 'assistant', content: r.reply, commands: r.commands });
+      st.messages.push({ role: 'assistant', content: r.reply, commands: r.commands }); reply = r;
     } catch (e) { st.messages.push({ role: 'assistant', content: 'Erro: ' + e.message }); }
-    draw();
+    draw(); return reply;
   };
+  const send = async () => {
+    const text = input.value.trim(); if (!text) return;
+    input.value = ''; await ask(text);
+  };
+  /* --- voice: microphone -> Whisper -> text (and "call" mode) --- */
+  const vstatus = h('div', { class: 'muted', style: 'min-height:18px;font-size:12px' });
+  const transcribe = async blob => (await api('/api/ai/transcribe', { method: 'POST', body: blob, headers: { 'Content-Type': blob.type || 'audio/webm' } })).text || '';
+  let micRec = null;
+  const micBtn = h('button', { title: 'Gravar sua voz e transcrever (Whisper) para o campo de texto', onclick: async () => {
+    if (micRec) { micRec.stop(); return; }
+    try {
+      micRec = await recordClip({ manual: true, onState: t => { vstatus.textContent = t; } });
+      micBtn.textContent = '⏹ Parar'; micBtn.classList.add('primary');
+      const blob = await micRec.done; micRec = null; micBtn.textContent = '🎤 Falar'; micBtn.classList.remove('primary');
+      if (!blob) { vstatus.textContent = ''; return; }
+      vstatus.textContent = 'Transcrevendo…';
+      const t = await transcribe(blob); input.value = (input.value ? input.value + ' ' : '') + t; input.focus(); vstatus.textContent = t ? 'Revise o texto e envie.' : 'Não entendi nada. Tente de novo.';
+    } catch (e) { micRec = null; micBtn.textContent = '🎤 Falar'; micBtn.classList.remove('primary'); vstatus.textContent = e.message; }
+  } }, '🎤 Falar');
+  let call = null;
+  const callBtn = h('button', { title: 'Conversar por voz: o assistente usa a tela do SSH como contexto', onclick: async () => {
+    if (call) { call.stop = true; call.rec && call.rec.stop(); speechSynthesis.cancel(); return; }
+    call = { stop: false }; callBtn.textContent = '📞 Desligar'; callBtn.classList.add('danger');
+    try {
+      while (!call.stop) {
+        call.rec = await recordClip({ manual: false, onState: t => { vstatus.textContent = t; } });
+        const blob = await call.rec.done; call.rec = null;
+        if (call.stop) break; if (!blob) continue;
+        vstatus.textContent = 'Transcrevendo…';
+        const text = (await transcribe(blob)).trim(); if (!text || call.stop) continue;
+        vstatus.textContent = 'Pensando…';
+        const r = await ask(text); if (call.stop) break;
+        if (r) { vstatus.textContent = 'Falando…'; await speak(r); }
+      }
+    } catch (e) { vstatus.textContent = e.message; }
+    call = null; callBtn.textContent = '📞 Ligar'; callBtn.classList.remove('danger'); if (!vstatus.textContent.includes(' ')) vstatus.textContent = ''; else if (/^(Ouvindo|Falando|Pensando|Transcrevendo)/.test(vstatus.textContent)) vstatus.textContent = 'Ligação encerrada.';
+  } }, '📞 Ligar');
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   draw();
   return h('div', { class: 'chat' }, h('h3', {}, 'Assistente de IA'), log,
     h('div', { class: 'input' }, h('label', { class: 'chk' }, screenChk, 'Enviar a tela ao assistente (segredos mascarados)'), input,
-      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: send }, 'Enviar'), h('button', { class: 'ghost', onclick: () => { st.messages = []; draw(); } }, 'Limpar'), h('button', { class: 'ghost', onclick: aiDialog }, 'Configurar'))));
+      vstatus, h('div', { class: 'row' }, h('button', { class: 'primary', onclick: send }, 'Enviar'), micBtn, callBtn, h('button', { class: 'ghost', onclick: () => { st.messages = []; draw(); } }, 'Limpar'), h('button', { class: 'ghost', onclick: aiDialog }, 'Configurar'))));
 }
 
 /* ---------- quick commands ---------- */
@@ -484,6 +561,11 @@ async function aiDialog() {
   f.provider.addEventListener('change', () => { if (!f.model.value || Object.values(HINTS).some(x => x[0] && x[0] === f.model.value)) f.model.value = HINTS[f.provider.value][0]; upd(); });
   freeBtn.onclick = async () => { try { const r = await api('/api/ai/free-models'); modelList.replaceChildren(...r.models.map(x => h('option', { value: x.id }, `${x.name} · ${Math.round(x.context / 1000)}k`))); freeBtn.textContent = `${r.models.length} modelos gratuitos: clique no campo Modelo para escolher`; } catch (e) { freeBtn.textContent = e.message; } };
   upd();
+  const vcfg = await api('/api/ai/voice');
+  const vf = { provider: h('select', {}, h('option', { value: 'openai' }, 'OpenAI (Whisper)'), h('option', { value: 'groq' }, 'Groq (Whisper, tem camada gratuita)'), h('option', { value: 'custom' }, 'Servidor Whisper próprio (compatível)')),
+    model: h('input', { value: vcfg.model, placeholder: 'padrão do provedor (whisper-1 / whisper-large-v3-turbo)' }), lang: h('input', { value: vcfg.language, placeholder: 'pt' }),
+    base: h('input', { value: vcfg.base_url, placeholder: 'ex.: http://localhost:8080/v1' }), key: h('input', { type: 'password', autocomplete: 'new-password', placeholder: vcfg.has_key ? '(chave salva — digite para trocar)' : 'chave de API (opcional no servidor próprio)' }) };
+  vf.provider.value = vcfg.provider; const verr = h('div', { class: 'err' });
   const err = h('div', { class: 'err' }), tokBox = h('div'), tokList = h('div');
   const loadTokens = async () => {
     const t = await api('/api/tokens');
@@ -496,6 +578,10 @@ async function aiDialog() {
     cfg.can_set_endpoint ? field('Endereço da API (opcional, só administradores)', f.base) : null, field('Chave de API', f.key),
     h('label', { class: 'chk', style: 'margin-top:10px' }, f.screen, 'Enviar a tela do terminal por padrão (senhas e chaves são mascaradas antes)'), err,
     h('div', { style: 'margin:10px 0 20px' }, h('button', { class: 'primary', onclick: async () => { err.textContent = ''; try { await api('/api/ai/settings', { method: 'PUT', body: { provider: f.provider.value, base_url: f.base.value, model: f.model.value, api_key: f.key.value, send_screen: f.screen.checked } }); err.textContent = ''; f.key.value = ''; f.key.placeholder = '(chave salva)'; err.className = 'okc'; err.textContent = 'Salvo.'; } catch (e) { err.className = 'err'; err.textContent = e.message; } } }, 'Salvar')),
+    h('h3', { style: 'margin:0' }, 'Voz (transcrição de áudio)'), h('div', { class: 'note' }, 'Ativa os botões 🎤 Falar e 📞 Ligar do assistente: seu áudio vira texto com Whisper e entra na conversa junto com a tela do SSH. O áudio é enviado ao provedor escolhido (senhas ditas em voz alta NÃO são mascaradas). Custo-benefício: o Groq costuma ser o mais barato/rápido e tem camada gratuita; um servidor Whisper próprio (ex.: whisper.cpp) mantém o áudio na sua rede. A resposta é lida pela voz do próprio navegador, sem custo. Funciona com qualquer modelo de texto; não é uma chamada de áudio nativa do modelo. O microfone exige localhost ou HTTPS.'),
+    h('div', { class: 'grid2' }, field('Provedor de voz', vf.provider), field('Modelo', vf.model)), h('div', { class: 'grid2' }, field('Idioma (opcional)', vf.lang), field('Chave de API da voz', vf.key)),
+    vcfg.can_set_endpoint ? field('Endereço da API de voz (opcional, só administradores)', vf.base) : null, verr,
+    h('div', { style: 'margin:10px 0 20px' }, h('button', { onclick: async () => { verr.className = 'err'; verr.textContent = ''; try { await api('/api/ai/voice', { method: 'PUT', body: { provider: vf.provider.value, base_url: vf.base.value, model: vf.model.value, language: vf.lang.value, api_key: vf.key.value } }); vf.key.value = ''; vf.key.placeholder = '(chave salva)'; verr.className = 'okc'; verr.textContent = 'Salvo.'; } catch (e) { verr.textContent = e.message; } } }, 'Salvar voz')),
     h('h3', { style: 'margin:0' }, 'Servidor MCP'), h('div', { class: 'note' }, 'Deixe outro assistente de IA usar o TT: ler a tela, sugerir comandos (você aprova) e, com token de execução, rodar só comandos de leitura permitidos para cada tipo de equipamento.',
       h('div', {}, 'HTTP: ', h('code', {}, `${location.origin}/mcp`), ' com cabeçalho Authorization: Bearer <token>.'), h('div', {}, 'Cliente que abre processo: ', h('code', {}, `tt mcp --url ${location.origin} --token <token>`))),
     tokList, tokBox, h('div', { class: 'grid2' }, field('Novo token', tname), field('Permissão', tscope)),

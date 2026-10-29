@@ -23,6 +23,18 @@ Botão **Assistente** ao lado de cada terminal.
 
 Estratégia simples: modelo pequeno ou gratuito para explicar saídas e sugerir comandos de rotina; modelo maior só quando travar. Em ambiente de cliente, use plano pago/sem treino e deixe *enviar a tela* ligado só quando precisar: a redação de segredos é por padrões e **o restante da tela vai ao provedor**.
 
+### Voz: falar com o assistente (🎤 e 📞)
+
+- **🎤 Falar:** grava sua voz, transcreve com **Whisper** e coloca o texto no campo da conversa para você revisar e enviar.
+- **📞 Ligar:** modo conversa. Você fala, ao fazer uma pausa o TT transcreve, envia ao assistente **junto com a tela atual do SSH** (mascarada, como no chat de texto), e a resposta é lida em voz alta; depois volta a ouvir. *Desligar* encerra. Comandos sugeridos continuam aparecendo como cartões na tela (a voz só avisa quantos são e **não lê código**), e **nada é executado sozinho**.
+- **Provedores de transcrição:** OpenAI (`whisper-1`), **Groq** (Whisper, costuma ser o mais barato e rápido, com camada gratuita) ou um **servidor Whisper próprio** compatível com a API da OpenAI (por exemplo whisper.cpp ou faster-whisper), que mantém o áudio dentro da sua rede (endereço só para administradores).
+- **Resposta falada:** usa a voz do próprio navegador (gratuita e local).
+- **Importante:**
+  - Funciona com qualquer modelo de texto; é um pipeline *voz → texto → modelo → voz*, não uma chamada de áudio nativa em tempo real do modelo.
+  - O áudio vai ao provedor de transcrição escolhido, e **senhas ditas em voz alta não são mascaradas**.
+  - O microfone só funciona em `localhost` ou HTTPS e o navegador pede permissão.
+  - Use fone de ouvido para o microfone não captar a resposta falada.
+
 ## 2. TT como servidor MCP (implementado)
 
 Para que outro assistente de IA use o TT como ferramenta.
@@ -51,7 +63,7 @@ Para que outro assistente de IA use o TT como ferramenta.
 
 ## Limites conhecidos
 
-- Respostas do modelo chegam inteiras (sem *streaming*).
+- Respostas do modelo chegam inteiras (sem *streaming*); na ligação isso significa uma pausa antes da resposta falada.
 - A redação de segredos é por padrões (melhor esforço): não garante que nada vaze. Revise o que envia em ambientes sensíveis ou desligue o envio da tela.
 - `suggest_command` e `read_terminal` exigem um terminal aberto no navegador; `run_readonly` abre uma conexão própria.
 - `run_readonly` em equipamentos que não aceitam comandos fora de shell interativo (alguns Cisco antigos) pode falhar.

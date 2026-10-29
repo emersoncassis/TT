@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Path, State},
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, post},
 };
 use serde::Deserialize;
@@ -24,6 +24,8 @@ pub fn routes() -> Router<Shared> {
         .route("/api/tunnels/{id}/stop", post(stop_tunnel))
         .route("/api/ai/settings", get(get_ai).put(put_ai))
         .route("/api/ai/chat", post(ai_chat))
+        .route("/api/ai/voice", get(get_voice).put(put_voice))
+        .route("/api/ai/transcribe", post(transcribe).layer(DefaultBodyLimit::max(26 * 1024 * 1024)))
         .route("/api/ai/free-models", get(free_models))
         .route("/api/tokens", get(list_tokens).post(create_token))
         .route("/api/tokens/{id}", delete(delete_token))
@@ -235,6 +237,91 @@ pub fn extract_commands(reply: &str, profile: Option<&tt_core::profiles::DeviceP
         }
     }
     out
+}
+
+// ---- Voice: speech-to-text (Whisper-compatible) --------------------------------
+fn voice_defaults(provider: &str) -> (&'static str, &'static str) {
+    match provider {
+        "groq" => ("https://api.groq.com/openai/v1", "whisper-large-v3-turbo"),
+        "custom" => ("", "whisper-1"),
+        _ => ("https://api.openai.com/v1", "whisper-1"),
+    }
+}
+
+async fn get_voice(Auth(u): Auth, State(s): State<Shared>) -> ApiResult<Json<Value>> {
+    let v = s.db.get_voice(u.id)?;
+    Ok(Json(json!({ "provider": v.provider, "base_url": v.base_url, "model": v.model, "language": v.language,
+                    "has_key": !v.key_enc.is_empty(), "can_set_endpoint": u.is_admin() })))
+}
+
+#[derive(Deserialize)]
+struct VoiceInput {
+    provider: String,
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    language: String,
+}
+
+async fn put_voice(Auth(u): Auth, State(s): State<Shared>, Json(i): Json<VoiceInput>) -> ApiResult<Json<Value>> {
+    if !matches!(i.provider.as_str(), "openai" | "groq" | "custom") {
+        return Err(ApiError::bad("provider must be 'openai', 'groq' or 'custom' (any Whisper-compatible server)"));
+    }
+    let base_url = i.base_url.trim().trim_end_matches('/').to_string();
+    let current = s.db.get_voice(u.id)?;
+    if !base_url.is_empty() && base_url != current.base_url && !u.is_admin() {
+        return Err(ApiError(StatusCode::FORBIDDEN, "only administrators can set a custom speech endpoint".into()));
+    }
+    if !base_url.is_empty() && !(base_url.starts_with("https://") || base_url.starts_with("http://")) {
+        return Err(ApiError::bad("endpoint must start with http:// or https://"));
+    }
+    let language: String = i.language.trim().chars().filter(|c| c.is_ascii_alphabetic() || *c == '-').take(8).collect();
+    let key = if i.api_key.is_empty() { None } else { Some(s.vault.seal(&i.api_key)?) };
+    s.db.put_voice(u.id, &crate::db::VoiceSettings { provider: i.provider, base_url, model: i.model.trim().into(), key_enc: String::new(), language }, key.as_deref())?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Body = raw audio bytes (the browser's MediaRecorder output). Returns `{ "text": ... }`.
+async fn transcribe(Auth(u): Auth, State(s): State<Shared>, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    let v = s.db.get_voice(u.id)?;
+    if v.key_enc.is_empty() && v.provider != "custom" {
+        return Err(ApiError::bad("configure speech-to-text (Voice) in AI & MCP first"));
+    }
+    if body.len() < 200 {
+        return Err(ApiError::bad("audio is empty"));
+    }
+    let key = if v.key_enc.is_empty() { String::new() } else { s.vault.open(&v.key_enc)? };
+    let (def_base, def_model) = voice_defaults(&v.provider);
+    let base = if v.base_url.is_empty() { def_base.to_string() } else { v.base_url.clone() };
+    if base.is_empty() {
+        return Err(ApiError::bad("set the speech endpoint in AI & MCP"));
+    }
+    let model = if v.model.is_empty() { def_model.to_string() } else { v.model.clone() };
+    let ctype = headers.get(axum::http::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).unwrap_or("audio/webm").split(';').next().unwrap_or("audio/webm").to_string();
+    let ext = if ctype.contains("ogg") { "ogg" } else if ctype.contains("mp4") || ctype.contains("m4a") { "m4a" } else if ctype.contains("wav") { "wav" } else { "webm" };
+    let part = reqwest::multipart::Part::bytes(body.to_vec()).file_name(format!("audio.{ext}")).mime_str(&ctype).map_err(|_| ApiError::bad("bad audio type"))?;
+    let mut form = reqwest::multipart::Form::new().part("file", part).text("model", model).text("response_format", "json");
+    if !v.language.is_empty() {
+        form = form.text("language", v.language.clone());
+    }
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(anyhow::Error::from)?;
+    let mut req = client.post(format!("{base}/audio/transcriptions")).multipart(form);
+    if !key.is_empty() {
+        req = req.bearer_auth(&key);
+    }
+    let bad_gateway = |m: String| ApiError(StatusCode::BAD_GATEWAY, m);
+    let res = req.send().await.map_err(|e| bad_gateway(format!("speech request failed: {}", e.without_url())))?;
+    let status = res.status();
+    let j: Value = res.json().await.map_err(|e| bad_gateway(format!("speech response unreadable: {}", e.without_url())))?;
+    if !status.is_success() {
+        return Err(bad_gateway(format!("speech provider error {status}: {}", j["error"]["message"].as_str().unwrap_or("unknown"))));
+    }
+    s.db.audit(Some(u.id), "ui", None, "transcribe", &format!("{} bytes", body.len()));
+    Ok(Json(json!({ "text": j["text"].as_str().unwrap_or("").trim() })))
 }
 
 /// Public list of OpenRouter's free models (no key needed). Model ids change often, so we ask OpenRouter instead of hard-coding them.

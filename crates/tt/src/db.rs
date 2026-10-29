@@ -78,6 +78,15 @@ pub struct TunnelRow {
 }
 
 #[derive(Debug, Clone)]
+pub struct VoiceSettings {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub key_enc: String,
+    pub language: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct AiSettings {
     pub provider: String,
     pub base_url: String,
@@ -142,6 +151,10 @@ CREATE TABLE IF NOT EXISTS ai_settings(
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   provider TEXT NOT NULL DEFAULT 'anthropic', base_url TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
   key_enc TEXT NOT NULL DEFAULT '', send_screen INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS voice_settings(
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'openai', base_url TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+  key_enc TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT 'pt');
 CREATE TABLE IF NOT EXISTS api_tokens(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, scope TEXT NOT NULL, created_at INTEGER NOT NULL, last_used INTEGER);
@@ -422,6 +435,28 @@ impl Db {
              ON CONFLICT(user_id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, model=excluded.model,
                send_screen=excluded.send_screen, key_enc=COALESCE(?, ai_settings.key_enc)",
             params![user, a.provider, a.base_url, a.model, key_enc.unwrap_or(""), a.send_screen as i64, key_enc],
+        )?;
+        Ok(())
+    }
+
+    // ---- voice (speech-to-text) settings ----------------------------------
+    pub fn get_voice(&self, user: i64) -> Result<VoiceSettings> {
+        let found = self
+            .c()
+            .query_row("SELECT provider,base_url,model,key_enc,language FROM voice_settings WHERE user_id=?", [user], |r| {
+                Ok(VoiceSettings { provider: r.get(0)?, base_url: r.get(1)?, model: r.get(2)?, key_enc: r.get(3)?, language: r.get(4)? })
+            })
+            .optional()?;
+        Ok(found.unwrap_or(VoiceSettings { provider: "openai".into(), base_url: String::new(), model: String::new(), key_enc: String::new(), language: "pt".into() }))
+    }
+
+    /// `key_enc = None` keeps the stored key.
+    pub fn put_voice(&self, user: i64, v: &VoiceSettings, key_enc: Option<&str>) -> Result<()> {
+        self.c().execute(
+            "INSERT INTO voice_settings(user_id,provider,base_url,model,key_enc,language) VALUES(?,?,?,?,?,?)
+             ON CONFLICT(user_id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, model=excluded.model,
+               language=excluded.language, key_enc=COALESCE(?, voice_settings.key_enc)",
+            params![user, v.provider, v.base_url, v.model, key_enc.unwrap_or(""), v.language, key_enc],
         )?;
         Ok(())
     }

@@ -95,6 +95,7 @@ No modo servidor, o **primeiro acesso cria o administrador**, que depois cria os
 - **Gerenciador de sessões** com pastas e busca.
 - **Multiusuário:** administrador e usuários, cada um com seus hosts.
 - **Assistente de IA** ao lado do terminal, com a **sua** chave de API: **Claude, Gemini (Google), OpenRouter (inclui modelos gratuitos)** ou qualquer servidor compatível com OpenAI, com dicas de custo-benefício na própria tela: lê a tela, explica e **sugere**. Nunca executa sozinho.
+- **Voz:** botão 🎤 transcreve sua fala com Whisper (OpenAI, Groq ou servidor próprio) e **📞 Ligar** abre uma conversa por voz em que a tela do SSH é o contexto. Detalhes em [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
 - **Servidor MCP** (HTTP e stdio): outra IA pode ler a tela, sugerir comandos e rodar comandos de **leitura** permitidos por equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
 - **Marca personalizável** (nome, cor, logo) por arquivo, sem recompilar.
 
@@ -136,7 +137,7 @@ Relatos de vulnerabilidade: [SECURITY.md](SECURITY.md).
 - [ ] Túnel remoto (`-R`), salto por bastion, multi-execução, macros
 - [ ] TLS nativo, 2FA, gravação de sessões
 - [ ] Telnet/serial, X11, RDP/VNC
-- [ ] Upload em streaming, respostas da IA em streaming, tradução da interface
+- [ ] Voz em tempo real nativa (hoje: voz → texto → modelo → voz), upload em streaming, respostas da IA em streaming, tradução da interface
 
 Detalhes em [docs/SPEC.md](docs/SPEC.md).
 
