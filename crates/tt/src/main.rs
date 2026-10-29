@@ -23,8 +23,9 @@ use crate::app::{AppState, Shared, hash_password, new_token};
 #[command(name = "tt", version, about = "TT - Terminal Tools: free SSH workstation with local and web-server modes")]
 struct Cli {
     /// Where TT keeps its database, master key and custom profiles.
-    #[arg(long, env = "TT_DATA", default_value = "./tt-data", global = true)]
-    data: PathBuf,
+    /// Default: `./tt-data` for `serve`; a per-user folder for `local` (so a double-click always finds your data).
+    #[arg(long, env = "TT_DATA", global = true)]
+    data: Option<PathBuf>,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -54,9 +55,12 @@ enum Cmd {
     Local {
         #[arg(long, default_value_t = 0)]
         port: u16,
-        /// Do not try to open the browser.
+        /// Do not try to open a window.
         #[arg(long)]
         no_open: bool,
+        /// Open in a normal browser tab instead of a standalone app window.
+        #[arg(long)]
+        tab: bool,
     },
 }
 
@@ -77,7 +81,16 @@ fn load_master_key(dir: &std::path::Path) -> Result<[u8; 32]> {
     Ok(key)
 }
 
-fn open_browser(url: &str) {
+/// Chromium-based browsers can show a page as a standalone app window (no tabs or address bar),
+/// which makes `tt local` feel like a desktop program. Falls back to the default browser.
+fn open_browser(url: &str, as_tab: bool) {
+    if !as_tab {
+        for exe in app_window_candidates() {
+            if std::process::Command::new(&exe).arg(format!("--app={url}")).spawn().is_ok() {
+                return;
+            }
+        }
+    }
     #[cfg(target_os = "windows")]
     let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
     #[cfg(target_os = "macos")]
@@ -86,22 +99,65 @@ fn open_browser(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
+fn user_data_dir() -> PathBuf {
+    let home = || std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    #[cfg(target_os = "windows")]
+    return std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("TT")).unwrap_or_else(|| PathBuf::from(".\\tt-data"));
+    #[cfg(target_os = "macos")]
+    return home().join("Library/Application Support/TT");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    return std::env::var_os("XDG_DATA_HOME").map(|d| PathBuf::from(d).join("tt")).unwrap_or_else(|| home().join(".local/share/tt"));
+}
+
+fn app_window_candidates() -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let mut v: Vec<PathBuf> = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        for var in ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"] {
+            if let Some(base) = std::env::var_os(var) {
+                let base = PathBuf::from(base);
+                for rel in ["Microsoft\\Edge\\Application\\msedge.exe", "Google\\Chrome\\Application\\chrome.exe", "BraveSoftware\\Brave-Browser\\Application\\brave.exe"] {
+                    let c = base.join(rel);
+                    if c.exists() { v.push(c); }
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    for c in ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"] {
+        if std::path::Path::new(c).exists() { v.push(c.into()); }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    for c in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser"] {
+        v.push(c.into());
+    }
+    v
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())).init();
-    let cli = Cli::parse();
+    // Double-clicking the program (no arguments) starts local mode.
+    let mut args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if args.len() == 1 { args.push("local".into()); }
+    let mut cli = Cli::parse_from(args);
     if let Cmd::Mcp { url, token } = &cli.cmd {
         return mcp::stdio_bridge(url.clone(), token.clone()).await;
     }
-    std::fs::create_dir_all(&cli.data)?;
-    let db = db::Db::open(&cli.data.join("tt.db"))?;
-    let vault = Vault::new(&load_master_key(&cli.data)?);
-    let profiles = profiles::load_profiles(Some(&cli.data.join("profiles")));
+    let data_dir: PathBuf = cli.data.take().unwrap_or_else(|| if matches!(cli.cmd, Cmd::Local { .. }) { user_data_dir() } else { PathBuf::from("./tt-data") });
+    println!("TT data folder: {}", data_dir.display());
+    std::fs::create_dir_all(&data_dir)?;
+    let db = db::Db::open(&data_dir.join("tt.db"))?;
+    let vault = Vault::new(&load_master_key(&data_dir)?);
+    let profiles = profiles::load_profiles(Some(&data_dir.join("profiles")));
 
+    let mut tab = false;
     let (bind, local_token, secure_cookies, open, public_tunnels) = match &cli.cmd {
         Cmd::Mcp { .. } => unreachable!(),
         Cmd::Serve { bind, secure_cookies, allow_public_tunnels } => (*bind, None, *secure_cookies, false, *allow_public_tunnels),
-        Cmd::Local { port, no_open } => {
+        Cmd::Local { port, no_open, tab: t } => {
+            tab = *t;
             if db.user_by_name("local")?.is_none() {
                 // Unusable password: this account is only reachable through the launch token.
                 db.create_user("local", &hash_password(&new_token())?, "admin")?;
@@ -114,7 +170,7 @@ async fn main() -> Result<()> {
         db,
         vault,
         profiles,
-        data_dir: cli.data.clone(),
+        data_dir: data_dir.clone(),
         local_token: local_token.clone(),
         secure_cookies,
         attempts: Mutex::new(HashMap::new()),
@@ -136,7 +192,7 @@ async fn main() -> Result<()> {
         let url = format!("http://{addr}/local-login?token={tok}");
         println!("TT local mode: {url}");
         if open {
-            open_browser(&url);
+            open_browser(&url, tab);
         }
     } else {
         println!("TT server listening on http://{addr}");

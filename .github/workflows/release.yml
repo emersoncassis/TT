@@ -1,0 +1,45 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, name: windows-x64, bin: tt.exe, pack: zip }
+          - { os: ubuntu-latest,  name: linux-x64,   bin: tt,     pack: tar }
+          - { os: macos-latest,   name: macos-arm64, bin: tt,     pack: tar }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Package
+        shell: bash
+        run: |
+          d=TT-${{ matrix.name }}
+          mkdir "$d"
+          cp "target/release/${{ matrix.bin }}" "$d/"
+          cp README.md LICENSE "$d/"
+          cp -r profiles "$d/profiles"
+          if [ "${{ matrix.pack }}" = zip ]; then 7z a "$d.zip" "$d" >/dev/null; else tar czf "$d.tar.gz" "$d"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TT-${{ matrix.name }}
+          path: TT-${{ matrix.name }}.*
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

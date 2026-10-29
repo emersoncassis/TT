@@ -38,22 +38,24 @@ No seu computador ou acessada pela rede, com usuários, túneis, SFTP e um assis
 
 ## Início rápido
 
-Requisitos: [Rust](https://rustup.rs) estável (edição 2024).
+**Windows, Linux e macOS:** baixe o arquivo da sua plataforma em [Releases](https://github.com/emersoncassis/TT/releases), extraia e dê dois cliques em `tt.exe` (ou rode `tt local`). Abre uma janela de aplicativo já logada; seus dados ficam numa pasta do seu usuário.
+
+Para compilar do código-fonte: [Rust](https://rustup.rs) estável (edição 2024).
 
 ```bash
 git clone https://github.com/emersoncassis/TT.git
 cd TT
 
-cargo run --release -- local                    # uso individual: abre o navegador já logado
+cargo run --release -- local                    # uso individual: janela de aplicativo, já logada
 # ou
 cargo run --release -- serve --bind 127.0.0.1:8443   # modo servidor, acesso por usuário e senha
 ```
 
-No modo servidor, o **primeiro acesso cria o administrador**, que depois cria os demais usuários. Ainda não há binários prontos nem app desktop (veja o [roadmap](#roadmap)).
+No modo servidor, o **primeiro acesso cria o administrador**, que depois cria os demais usuários. O app desktop empacotado (Tauri) ainda está no [roadmap](#roadmap); por ora o `tt local` já abre como janela de aplicativo.
 
 | Modo | Comando | Para quê |
 |---|---|---|
-| **Local** | `tt local` | Uso individual. Escuta só em `127.0.0.1`, sem senha (token de uso único). |
+| **Local** | `tt local` | Uso individual. Escuta só em `127.0.0.1`, sem senha (token de uso único). Abre como janela de app (`--tab` para aba normal). |
 | **Servidor web** | `tt serve` | O servidor fala SSH com os equipamentos; o painel é acessado pela rede, com usuários. |
 
 ## Telas
@@ -129,7 +131,8 @@ Relatos de vulnerabilidade: [SECURITY.md](SECURITY.md).
 - [x] Terminal, sessões, usuários, SFTP, perfis por equipamento, NETCONF
 - [x] Túneis local e SOCKS5
 - [x] Assistente de IA assistido e servidor MCP
-- [ ] App desktop empacotado (Tauri) e binários prontos
+- [x] Binários para Windows, Linux e macOS (Releases)
+- [ ] Instalador desktop (Tauri / .msi) e ícone na área de trabalho
 - [ ] Túnel remoto (`-R`), salto por bastion, multi-execução, macros
 - [ ] TLS nativo, 2FA, gravação de sessões
 - [ ] Telnet/serial, X11, RDP/VNC
