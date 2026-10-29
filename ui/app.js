@@ -58,7 +58,7 @@ function applyBrand() {
 
 function brandEl() {
   const b = state.brand;
-  return h('div', { class: 'brand' }, h('img', { src: b.logo ? '/branding/logo' : '/assets/logo-ic-mark.png', alt: '' }), h('span', {}, b.name || 'TT'), b.tagline === '' ? null : h('small', {}, b.tagline || 'Terminal Tools'));
+  return h('div', { class: 'brand' }, h('img', { src: b.logo ? '/branding/logo' : '/assets/tt-logo.svg', alt: '' }), h('span', {}, b.name || 'TT'), b.tagline === '' ? null : h('small', {}, b.tagline || 'Terminal Tools'));
 }
 
 function renderAuth(mode) {

@@ -46,7 +46,7 @@ Técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedo
 - **Túneis SSH:** encaminhamento local (porta → destino) e proxy **SOCKS5** dinâmico, com início/parada pelo painel.
 - **Assistente de IA** ao lado do terminal: lê a tela (segredos mascarados antes de sair), explica e **sugere** comandos e boas práticas com a **sua** chave de API. Nunca executa sozinho.
 - **Servidor MCP** (HTTP e stdio): outro assistente de IA pode ler a tela, sugerir comandos (você aprova) e rodar comandos de **leitura** permitidos por tipo de equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
-- Visual no padrão do design system **IC TEAM** (escuro com ouro), com marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
+- Visual escuro com dourado, com marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
 
 ## O que ainda falta (roadmap)
 
@@ -94,4 +94,4 @@ Senhas de usuários: Argon2id. Segredos de hosts: XChaCha20-Poly1305 com chave m
 
 ## Licença
 
-MIT — use, modifique, troque a logo, distribua. Veja [LICENSE](LICENSE). A única exceção é o selo do IC TEAM em `ui/assets/` (identidade visual de seus donos, veja `ui/assets/NOTICE.md`): troque-o pela sua marca se for redistribuir.
+MIT — use, modifique, troque a logo, distribua. Veja [LICENSE](LICENSE).
