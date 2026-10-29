@@ -118,6 +118,18 @@ async fn connect_with_prompts(
     }
 }
 
+/// Removes the live-session entry when the terminal ends (any exit path).
+struct LiveGuard {
+    s: Shared,
+    id: u64,
+}
+
+impl Drop for LiveGuard {
+    fn drop(&mut self) {
+        self.s.live.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
+    }
+}
+
 struct Scripted {
     steps: VecDeque<PostLoginStep>,
     step_started: Instant,
@@ -188,6 +200,18 @@ async fn run_terminal(s: Shared, user_id: i64, row: HostRow, mut ws: WebSocket) 
     }
     let mut ch = ssh::open_shell(&handle, cols, rows).await?;
     send_json(&mut ws, json!({"t":"ready"})).await;
+    let (push_tx, mut push_rx) = mpsc::unbounded_channel::<Value>();
+    let live = Arc::new(LiveSession {
+        id: s.next_live.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1,
+        user_id,
+        host_id: row.view.id,
+        host_name: row.view.name.clone(),
+        profile_id: row.view.profile_id.clone(),
+        buffer: Default::default(),
+        push: push_tx,
+    });
+    s.live.lock().unwrap_or_else(|e| e.into_inner()).insert(live.id, live.clone());
+    let _guard = LiveGuard { s: s.clone(), id: live.id };
 
     let enable = if row.enable_enc.is_empty() { None } else { s.vault.open(&row.enable_enc).ok() };
     let mut script = build_script(profile.as_ref(), enable);
@@ -204,7 +228,9 @@ async fn run_terminal(s: Shared, user_id: i64, row: HostRow, mut ws: WebSocket) 
                     Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
                         last_output = Instant::now();
                         seen_output = true;
-                        tail.push_str(&String::from_utf8_lossy(&data));
+                        let chunk = String::from_utf8_lossy(&data);
+                        live.append(&chunk);
+                        tail.push_str(&chunk);
                         if tail.len() > 4096 {
                             let cut = tail.len() - 2048;
                             let cut = (cut..tail.len()).find(|i| tail.is_char_boundary(*i)).unwrap_or(tail.len());
@@ -231,6 +257,9 @@ async fn run_terminal(s: Shared, user_id: i64, row: HostRow, mut ws: WebSocket) 
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                     _ => {}
                 }
+            }
+            Some(sg) = push_rx.recv() => {
+                if !send_json(&mut ws, sg).await { break; }
             }
             _ = tick.tick() => {
                 if let Some(step) = script.steps.front().cloned() {

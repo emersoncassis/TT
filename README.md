@@ -2,7 +2,7 @@
 
 **Estação de trabalho SSH livre e aberta, para o técnico de campo, o analista de redes e o sysadmin — no seu computador ou acessada pela rede.**
 
-> 🚧 **Em pleno desenvolvimento (v0.1).** O que está aqui já funciona, mas ainda falta muita coisa e **a comunidade é bem-vinda para ajudar**: testar em equipamentos reais, corrigir comandos, criar perfis, traduzir e implementar o roadmap. Veja [Como ajudar](#como-ajudar).
+> 🚧 **Em pleno desenvolvimento (v0.2).** O que está aqui já funciona, mas ainda falta muita coisa e **a comunidade é bem-vinda para ajudar**: testar em equipamentos reais, corrigir comandos, criar perfis, traduzir e implementar o roadmap. Veja [Como ajudar](#como-ajudar).
 
 ![Terminal e comandos prontos por tipo de equipamento](docs/screenshots/04-terminal-e-comandos.png)
 
@@ -31,7 +31,8 @@ Técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedo
 |---|---|
 | ![Primeiro acesso](docs/screenshots/01-primeiro-acesso.png) **Primeiro acesso:** cria o administrador | ![Cadastro de host](docs/screenshots/02-cadastro-host-mikrotik.png) **Cadastro por tipo de equipamento**, com avisos específicos |
 | ![Chave do host](docs/screenshots/03-confirmar-chave-do-host.png) **Confirmação da chave do host** (alerta forte se mudar) | ![SFTP](docs/screenshots/05-arquivos-sftp.png) **Arquivos por SFTP** ao lado do terminal |
-| ![Usuários](docs/screenshots/06-usuarios.png) **Administração de usuários** | |
+| ![Usuários](docs/screenshots/06-usuarios.png) **Administração de usuários** | ![Assistente](docs/screenshots/07-assistente-ia.png) **Assistente de IA** sugerindo comandos (resposta ilustrativa de um modelo simulado) |
+| ![Túneis](docs/screenshots/08-tuneis.png) **Túneis SSH** | ![IA e MCP](docs/screenshots/09-ia-e-mcp.png) **IA e MCP:** chave própria e tokens |
 
 ## O que já funciona (v0.1)
 
@@ -42,11 +43,14 @@ Técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedo
 - **Perfis de equipamento:** Debian/Ubuntu, Raspberry Pi, OpenWrt, pfSense, OPNsense, MikroTik, Cisco IOS/IOS-XE, Juniper Junos, Huawei VRP, NETCONF e genérico — veja [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - **Console NETCONF** (RFC 6241/6242, framing 1.0 e 1.1).
 - Usuários e administrador, senhas com Argon2id, limite de tentativas de login, proteção contra requisições cross-site.
-- Marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
+- **Túneis SSH:** encaminhamento local (porta → destino) e proxy **SOCKS5** dinâmico, com início/parada pelo painel.
+- **Assistente de IA** ao lado do terminal: lê a tela (segredos mascarados antes de sair), explica e **sugere** comandos e boas práticas com a **sua** chave de API. Nunca executa sozinho.
+- **Servidor MCP** (HTTP e stdio): outro assistente de IA pode ler a tela, sugerir comandos (você aprova) e rodar comandos de **leitura** permitidos por tipo de equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
+- Visual no padrão do design system **IC TEAM** (escuro com ouro), com marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
 
 ## O que ainda falta (roadmap)
 
-Túneis SSH, multi-execução, macros, salto por bastion, gestão de chaves, TLS nativo e 2FA, gravação de sessões, telnet/serial, X11, RDP/VNC, **app desktop empacotado**, upload em streaming, tradução da interface, **assistente de IA** (sugere comandos e boas práticas, nunca executa sozinho) e **servidor MCP**. Detalhes em [docs/SPEC.md](docs/SPEC.md) e [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
+Túnel remoto (`-R`), multi-execução, macros, salto por bastion, gestão de chaves, TLS nativo e 2FA, gravação de sessões, telnet/serial, X11, RDP/VNC **app desktop empacotado**, upload em streaming, respostas da IA em *streaming* e tradução da interface. Detalhes em [docs/SPEC.md](docs/SPEC.md) e [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
 
 ## Como ajudar
 
@@ -68,7 +72,7 @@ Dados (banco, chave mestra, perfis próprios, marca) ficam em `--data` (ou `TT_D
 
 ### Expondo na rede com segurança
 
-O TT fala HTTP simples. Para acesso pela rede coloque-o atrás de um proxy HTTPS (Caddy, nginx, Traefik) e use `--secure-cookies`. O TT avisa quando escuta fora do loopback sem isso.
+O TT fala HTTP simples. Túneis escutam só em `127.0.0.1` do servidor (use `--allow-public-tunnels` para liberar outras interfaces). Para acesso pela rede coloque-o atrás de um proxy HTTPS (Caddy, nginx, Traefik) e use `--secure-cookies`. O TT avisa quando escuta fora do loopback sem isso.
 
 ### Personalizando a marca
 
@@ -86,8 +90,8 @@ Crie um JSON em `tt-data/profiles/` (ou envie um PR em `profiles/`) no formato d
 
 ## Segurança em resumo
 
-Senhas de usuários: Argon2id. Segredos de hosts: XChaCha20-Poly1305 com chave mestra em `master.key` (0600). Sessão por cookie `HttpOnly` + `SameSite=Strict`, verificação de `Origin` em requisições que alteram estado e em WebSockets, bloqueio após 8 tentativas de login por IP. O SFTP só conecta a hosts cuja chave já foi confiada em um terminal. Relatos de vulnerabilidade: veja [SECURITY.md](SECURITY.md).
+Senhas de usuários: Argon2id. Segredos de hosts: XChaCha20-Poly1305 com chave mestra em `master.key` (0600). Sessão por cookie `HttpOnly` + `SameSite=Strict`, verificação de `Origin` em requisições que alteram estado e em WebSockets, bloqueio após 8 tentativas de login por IP. SFTP, túneis e o MCP só conectam a hosts cuja chave já foi confiada em um terminal. Segredos são mascarados antes de irem para a IA; o MCP só executa comandos de uma lista de leitura por tipo de equipamento. Relatos de vulnerabilidade: veja [SECURITY.md](SECURITY.md).
 
 ## Licença
 
-MIT — use, modifique, troque a logo, distribua. Veja [LICENSE](LICENSE).
+MIT — use, modifique, troque a logo, distribua. Veja [LICENSE](LICENSE). A única exceção é o selo do IC TEAM em `ui/assets/` (identidade visual de seus donos, veja `ui/assets/NOTICE.md`): troque-o pela sua marca se for redistribuir.

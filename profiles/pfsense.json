@@ -7,25 +7,88 @@
   "sftp": "full",
   "init_commands": [],
   "post_login": [
-    {"expect": "Enter an option:", "send": "8\n", "timeout_secs": 6}
+    {
+      "expect": "Enter an option:",
+      "send": "8\n",
+      "timeout_secs": 6
+    }
   ],
   "quick_commands": [
-    {"group": "Firewall", "label": "Regras ativas (pf)", "command": "pfctl -sr"},
-    {"group": "Firewall", "label": "Estatísticas do pf", "command": "pfctl -si"},
-    {"group": "Firewall", "label": "Tabela de estados (primeiros 50)", "command": "pfctl -ss | head -n 50"},
-    {"group": "Firewall", "label": "Log do filtro (últimas 100)", "command": "tail -n 100 /var/log/filter.log"},
-    {"group": "Rede", "label": "Interfaces", "command": "ifconfig -a"},
-    {"group": "Rede", "label": "Rotas", "command": "netstat -rn"},
-    {"group": "Rede", "label": "Sockets em escuta", "command": "sockstat -4 -l"},
-    {"group": "Gateways", "label": "Estado dos gateways", "command": "pfSsh.php playback gatewaystatus"},
-    {"group": "Sistema", "label": "Processos (top)", "command": "top -aSH -n 20"},
-    {"group": "Sistema", "label": "Pacotes instalados", "command": "pkg info | head -n 50"},
-    {"group": "Sistema", "label": "Versão", "command": "cat /etc/version; uname -a"},
-    {"group": "Backup", "label": "Local do config (baixe via SFTP)", "command": "ls -l /conf/config.xml /conf/backup | head"}
+    {
+      "group": "Firewall",
+      "label": "Regras ativas (pf)",
+      "command": "pfctl -sr"
+    },
+    {
+      "group": "Firewall",
+      "label": "Estatísticas do pf",
+      "command": "pfctl -si"
+    },
+    {
+      "group": "Firewall",
+      "label": "Tabela de estados (primeiros 50)",
+      "command": "pfctl -ss | head -n 50"
+    },
+    {
+      "group": "Firewall",
+      "label": "Log do filtro (últimas 100)",
+      "command": "tail -n 100 /var/log/filter.log"
+    },
+    {
+      "group": "Rede",
+      "label": "Interfaces",
+      "command": "ifconfig -a"
+    },
+    {
+      "group": "Rede",
+      "label": "Rotas",
+      "command": "netstat -rn"
+    },
+    {
+      "group": "Rede",
+      "label": "Sockets em escuta",
+      "command": "sockstat -4 -l"
+    },
+    {
+      "group": "Gateways",
+      "label": "Estado dos gateways",
+      "command": "pfSsh.php playback gatewaystatus"
+    },
+    {
+      "group": "Sistema",
+      "label": "Processos (top)",
+      "command": "top -aSH -n 20"
+    },
+    {
+      "group": "Sistema",
+      "label": "Pacotes instalados",
+      "command": "pkg info | head -n 50"
+    },
+    {
+      "group": "Sistema",
+      "label": "Versão",
+      "command": "cat /etc/version; uname -a"
+    },
+    {
+      "group": "Backup",
+      "label": "Local do config (baixe via SFTP)",
+      "command": "ls -l /conf/config.xml /conf/backup | head"
+    }
   ],
   "notes": [
     "Ative o SSH em System > Advanced > Admin Access.",
     "Se o shell do usuário já for /bin/sh, o menu não aparece e o passo automático é ignorado após o tempo limite.",
     "Backup: baixe /conf/config.xml pelo gerenciador de arquivos."
+  ],
+  "readonly": [
+    "pfctl -sr$",
+    "pfctl -si$",
+    "pfctl -sn$",
+    "ifconfig -a$",
+    "netstat -rn$",
+    "sockstat -4 -l$",
+    "cat /etc/version$",
+    "uname -a$",
+    "uptime$"
   ]
 }

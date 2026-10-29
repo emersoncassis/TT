@@ -8,28 +8,121 @@
   "username_suffix": "+ct",
   "init_commands": [],
   "quick_commands": [
-    {"group": "Sistema", "label": "Recursos (CPU/RAM/versão)", "command": "/system resource print"},
-    {"group": "Sistema", "label": "Identidade", "command": "/system identity print"},
-    {"group": "Sistema", "label": "Routerboard / firmware", "command": "/system routerboard print"},
-    {"group": "Sistema", "label": "Verificar atualização", "command": "/system package update check-for-updates"},
-    {"group": "Rede", "label": "Interfaces", "command": "/interface print"},
-    {"group": "Rede", "label": "Endereços IP", "command": "/ip address print"},
-    {"group": "Rede", "label": "Rotas", "command": "/ip route print"},
-    {"group": "Rede", "label": "Leases DHCP", "command": "/ip dhcp-server lease print"},
-    {"group": "Rede", "label": "Vizinhos (MNDP/LLDP)", "command": "/ip neighbor print"},
-    {"group": "Firewall", "label": "Regras de filtro", "command": "/ip firewall filter print"},
-    {"group": "Firewall", "label": "Regras de NAT", "command": "/ip firewall nat print"},
-    {"group": "Firewall", "label": "Conexões (primeiras)", "command": "/ip firewall connection print count-only"},
-    {"group": "Segurança", "label": "Usuários", "command": "/user print"},
-    {"group": "Segurança", "label": "Configuração do SSH e fingerprint", "command": "/ip ssh print"},
-    {"group": "Logs", "label": "Log", "command": "/log print"},
-    {"group": "Backup", "label": "Exportar configuração (compact)", "command": "/export compact"},
-    {"group": "Backup", "label": "Exportar para arquivo", "command": "/export compact file={{nome}}"},
-    {"group": "Backup", "label": "Backup binário", "command": "/system backup save name={{nome}}"}
+    {
+      "group": "Sistema",
+      "label": "Recursos (CPU/RAM/versão)",
+      "command": "/system resource print"
+    },
+    {
+      "group": "Sistema",
+      "label": "Identidade",
+      "command": "/system identity print"
+    },
+    {
+      "group": "Sistema",
+      "label": "Routerboard / firmware",
+      "command": "/system routerboard print"
+    },
+    {
+      "group": "Sistema",
+      "label": "Verificar atualização",
+      "command": "/system package update check-for-updates"
+    },
+    {
+      "group": "Rede",
+      "label": "Interfaces",
+      "command": "/interface print"
+    },
+    {
+      "group": "Rede",
+      "label": "Endereços IP",
+      "command": "/ip address print"
+    },
+    {
+      "group": "Rede",
+      "label": "Rotas",
+      "command": "/ip route print"
+    },
+    {
+      "group": "Rede",
+      "label": "Leases DHCP",
+      "command": "/ip dhcp-server lease print"
+    },
+    {
+      "group": "Rede",
+      "label": "Vizinhos (MNDP/LLDP)",
+      "command": "/ip neighbor print"
+    },
+    {
+      "group": "Firewall",
+      "label": "Regras de filtro",
+      "command": "/ip firewall filter print"
+    },
+    {
+      "group": "Firewall",
+      "label": "Regras de NAT",
+      "command": "/ip firewall nat print"
+    },
+    {
+      "group": "Firewall",
+      "label": "Conexões (primeiras)",
+      "command": "/ip firewall connection print count-only"
+    },
+    {
+      "group": "Segurança",
+      "label": "Usuários",
+      "command": "/user print"
+    },
+    {
+      "group": "Segurança",
+      "label": "Configuração do SSH e fingerprint",
+      "command": "/ip ssh print"
+    },
+    {
+      "group": "Logs",
+      "label": "Log",
+      "command": "/log print"
+    },
+    {
+      "group": "Backup",
+      "label": "Exportar configuração (compact)",
+      "command": "/export compact"
+    },
+    {
+      "group": "Backup",
+      "label": "Exportar para arquivo",
+      "command": "/export compact file={{nome}}"
+    },
+    {
+      "group": "Backup",
+      "label": "Backup binário",
+      "command": "/system backup save name={{nome}}"
+    }
   ],
   "notes": [
     "O TT acrescenta +ct ao usuário (desliga cores e detecção de terminal do RouterOS) quando o login ainda não tem sufixo.",
     "Confira a fingerprint do host com `/ip ssh print` na primeira conexão; ela muda se o roteador regenerar a chave.",
     "Com chave pública cadastrada para o usuário, o RouterOS recusa senha por padrão (password-authentication=yes-if-no-key)."
+  ],
+  "readonly": [
+    "/system resource print",
+    "/system identity print",
+    "/system routerboard print",
+    "/interface print",
+    "/ip address print",
+    "/ip route print",
+    "/ip dhcp-server lease print",
+    "/ip neighbor print",
+    "/ip firewall filter print",
+    "/ip firewall nat print",
+    "/ip firewall connection print",
+    "/ip ssh print",
+    "/log print",
+    "/user print",
+    "/export compact",
+    "/system clock print",
+    "/interface ethernet print",
+    "/ip dns print",
+    "/ip service print"
   ]
 }

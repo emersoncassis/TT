@@ -40,7 +40,8 @@ Categorias baseadas na descrição pública de workstations SSH tradicionais.
 | Modo local sem senha | ✅ v0.1 |
 | Marca personalizável | ✅ v0.1 |
 | Arrastar e soltar arquivos / upload em streaming | 🔜 |
-| Túneis SSH (local, remoto, dinâmico/SOCKS) — RFC 4254 | 🔜 |
+| Túneis SSH local e dinâmico/SOCKS5 — RFC 4254 | ✅ v0.2 |
+| Túnel remoto (`-R`) | 🔜 |
 | Multi-execução (mesmo comando em vários hosts) | 🔜 |
 | Macros e snippets do usuário | 🔜 |
 | Salto por bastion (ProxyJump) | 🔜 |
@@ -51,8 +52,9 @@ Categorias baseadas na descrição pública de workstations SSH tradicionais.
 | Encaminhamento X11 | 🔜 |
 | RDP / VNC | 🔜 (via gateways abertos, ex.: Guacamole) |
 | App desktop empacotado (Tauri) | 🔜 |
-| **Assistente de IA assistido** | 🔜 [AI-AND-MCP.md](AI-AND-MCP.md) |
-| **Servidor MCP** | 🔜 [AI-AND-MCP.md](AI-AND-MCP.md) |
+| **Assistente de IA assistido** (chave própria, só sugere) | ✅ v0.2 [AI-AND-MCP.md](AI-AND-MCP.md) |
+| **Servidor MCP** (HTTP + stdio, tokens, auditoria) | ✅ v0.2 |
+| IA com *streaming* | 🔜 |
 | Tradução da interface (i18n) | 🔜 (hoje pt-BR) |
 
 ## Decisões
@@ -60,4 +62,4 @@ Categorias baseadas na descrição pública de workstations SSH tradicionais.
 - **Rust + russh:** binário único, sem runtime; SSH em Rust seguro.
 - **Segredos:** XChaCha20-Poly1305 com chave mestra em arquivo. Ainda não há senha mestra do usuário; fica no roadmap para o modo local.
 - **SFTP exige chave já confiada:** evita que uma operação de arquivos aceite uma chave desconhecida sem o usuário ver.
-- **Design Setim:** a paleta atual (escuro + laranja) é **provisória**; todo o visual está nas variáveis de `ui/theme.css` para aplicar o padrão oficial.
+- **Design:** segue o design system IC TEAM (escuro primeiro, ouro, Barlow Condensed + Inter). Todo o visual está nas variáveis de `ui/theme.css`. As fontes não são embutidas (sem chamadas externas); sem elas a interface usa Arial Narrow/fonte do sistema.

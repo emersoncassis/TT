@@ -162,3 +162,37 @@ pub async fn open_netconf(handle: &SshHandle) -> Result<russh::Channel<client::M
     ch.request_subsystem(true, "netconf").await?;
     Ok(ch)
 }
+
+/// Runs one command on a fresh exec channel; returns (output, exit status).
+/// Output is capped at `max_bytes`; the call is bounded by `timeout`.
+pub async fn exec_command(
+    handle: &SshHandle,
+    command: &str,
+    timeout: Duration,
+    max_bytes: usize,
+) -> Result<(String, Option<u32>)> {
+    use russh::ChannelMsg;
+    let mut ch = handle.channel_open_session().await?;
+    ch.exec(true, command.as_bytes().to_vec()).await?;
+    let mut out: Vec<u8> = Vec::new();
+    let mut status = None;
+    let run = async {
+        while let Some(msg) = ch.wait().await {
+            match msg {
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
+                    if out.len() < max_bytes {
+                        let room = max_bytes - out.len();
+                        out.extend_from_slice(&data[..data.len().min(room)]);
+                    }
+                }
+                ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+    };
+    if tokio::time::timeout(timeout, run).await.is_err() {
+        bail!("command timed out after {}s", timeout.as_secs());
+    }
+    Ok((String::from_utf8_lossy(&out).into_owned(), status))
+}

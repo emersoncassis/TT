@@ -65,6 +65,46 @@ pub struct HostInput {
     pub enable_secret: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TunnelRow {
+    pub id: i64,
+    pub host_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub listen_host: String,
+    pub listen_port: u16,
+    pub dest_host: String,
+    pub dest_port: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct AiSettings {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub key_enc: String,
+    pub send_screen: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TokenView {
+    pub id: i64,
+    pub name: String,
+    pub scope: String,
+    pub created_at: i64,
+    pub last_used: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditRow {
+    pub ts: i64,
+    pub user_id: Option<i64>,
+    pub source: String,
+    pub host_id: Option<i64>,
+    pub action: String,
+    pub detail: String,
+}
+
 /// Stored row including encrypted secrets (server-side use only).
 pub struct HostRow {
     pub view: HostView,
@@ -93,6 +133,21 @@ CREATE TABLE IF NOT EXISTS known_hosts(
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   host TEXT NOT NULL, port INTEGER NOT NULL, key_type TEXT NOT NULL, fingerprint TEXT NOT NULL,
   PRIMARY KEY(user_id, host, port));
+CREATE TABLE IF NOT EXISTS tunnels(
+  id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  kind TEXT NOT NULL, listen_host TEXT NOT NULL, listen_port INTEGER NOT NULL,
+  dest_host TEXT NOT NULL DEFAULT '', dest_port INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS ai_settings(
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'anthropic', base_url TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+  key_enc TEXT NOT NULL DEFAULT '', send_screen INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS api_tokens(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, scope TEXT NOT NULL, created_at INTEGER NOT NULL, last_used INTEGER);
+CREATE TABLE IF NOT EXISTS audit(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, user_id INTEGER, source TEXT NOT NULL,
+  host_id INTEGER, action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
 ";
 
 pub fn now() -> i64 {
@@ -311,5 +366,117 @@ impl Db {
             params![user, host, port],
         )?;
         Ok(())
+    }
+
+    // ---- tunnels -----------------------------------------------------------
+    fn tunnel_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<TunnelRow> {
+        Ok(TunnelRow {
+            id: r.get(0)?, host_id: r.get(1)?, name: r.get(2)?, kind: r.get(3)?, listen_host: r.get(4)?,
+            listen_port: r.get::<_, i64>(5)? as u16, dest_host: r.get(6)?, dest_port: r.get::<_, i64>(7)? as u16,
+        })
+    }
+    const TUNNEL_COLS: &'static str = "id,host_id,name,kind,listen_host,listen_port,dest_host,dest_port";
+
+    pub fn list_tunnels(&self, owner: i64) -> Result<Vec<TunnelRow>> {
+        let c = self.c();
+        let sql = format!("SELECT {} FROM tunnels WHERE owner_id=? ORDER BY name", Self::TUNNEL_COLS);
+        let mut st = c.prepare(&sql)?;
+        let rows = st.query_map([owner], Self::tunnel_from)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn get_tunnel(&self, owner: i64, id: i64) -> Result<Option<TunnelRow>> {
+        let sql = format!("SELECT {} FROM tunnels WHERE owner_id=? AND id=?", Self::TUNNEL_COLS);
+        Ok(self.c().query_row(&sql, params![owner, id], Self::tunnel_from).optional()?)
+    }
+
+    pub fn insert_tunnel(&self, owner: i64, t: &TunnelRow) -> Result<i64> {
+        let c = self.c();
+        c.execute(
+            "INSERT INTO tunnels(owner_id,host_id,name,kind,listen_host,listen_port,dest_host,dest_port) VALUES(?,?,?,?,?,?,?,?)",
+            params![owner, t.host_id, t.name, t.kind, t.listen_host, t.listen_port, t.dest_host, t.dest_port],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
+    pub fn delete_tunnel(&self, owner: i64, id: i64) -> Result<bool> {
+        Ok(self.c().execute("DELETE FROM tunnels WHERE owner_id=? AND id=?", [owner, id])? > 0)
+    }
+
+    // ---- AI settings -------------------------------------------------------
+    pub fn get_ai(&self, user: i64) -> Result<AiSettings> {
+        let found = self
+            .c()
+            .query_row("SELECT provider,base_url,model,key_enc,send_screen FROM ai_settings WHERE user_id=?", [user], |r| {
+                Ok(AiSettings { provider: r.get(0)?, base_url: r.get(1)?, model: r.get(2)?, key_enc: r.get(3)?, send_screen: r.get::<_, i64>(4)? != 0 })
+            })
+            .optional()?;
+        Ok(found.unwrap_or(AiSettings { provider: "anthropic".into(), base_url: String::new(), model: String::new(), key_enc: String::new(), send_screen: true }))
+    }
+
+    /// `key_enc = None` keeps the stored key.
+    pub fn put_ai(&self, user: i64, a: &AiSettings, key_enc: Option<&str>) -> Result<()> {
+        let c = self.c();
+        c.execute(
+            "INSERT INTO ai_settings(user_id,provider,base_url,model,key_enc,send_screen) VALUES(?,?,?,?,?,?)
+             ON CONFLICT(user_id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, model=excluded.model,
+               send_screen=excluded.send_screen, key_enc=COALESCE(?, ai_settings.key_enc)",
+            params![user, a.provider, a.base_url, a.model, key_enc.unwrap_or(""), a.send_screen as i64, key_enc],
+        )?;
+        Ok(())
+    }
+
+    // ---- API tokens (MCP) --------------------------------------------------
+    pub fn create_token(&self, user: i64, name: &str, hash: &str, scope: &str) -> Result<i64> {
+        let c = self.c();
+        c.execute(
+            "INSERT INTO api_tokens(user_id,name,token_hash,scope,created_at) VALUES(?,?,?,?,?)",
+            params![user, name, hash, scope, now()],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
+    pub fn list_tokens(&self, user: i64) -> Result<Vec<TokenView>> {
+        let c = self.c();
+        let mut st = c.prepare("SELECT id,name,scope,created_at,last_used FROM api_tokens WHERE user_id=? ORDER BY id")?;
+        let rows = st.query_map([user], |r| Ok(TokenView { id: r.get(0)?, name: r.get(1)?, scope: r.get(2)?, created_at: r.get(3)?, last_used: r.get(4)? }))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn delete_token(&self, user: i64, id: i64) -> Result<bool> {
+        Ok(self.c().execute("DELETE FROM api_tokens WHERE user_id=? AND id=?", [user, id])? > 0)
+    }
+
+    /// Returns (user, scope) for a bearer token hash and stamps `last_used`.
+    pub fn user_by_token(&self, hash: &str) -> Result<Option<(User, String)>> {
+        let c = self.c();
+        let found = c
+            .query_row(
+                "SELECT u.id,u.username,u.role,u.created_at,t.scope,t.id FROM api_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=?",
+                [hash],
+                |r| Ok((Self::user_from(r)?, r.get::<_, String>(4)?, r.get::<_, i64>(5)?)),
+            )
+            .optional()?;
+        if let Some((u, scope, tid)) = found {
+            c.execute("UPDATE api_tokens SET last_used=? WHERE id=?", [now(), tid])?;
+            return Ok(Some((u, scope)));
+        }
+        Ok(None)
+    }
+
+    // ---- audit -------------------------------------------------------------
+    pub fn audit(&self, user: Option<i64>, source: &str, host: Option<i64>, action: &str, detail: &str) {
+        let d: String = detail.chars().take(500).collect();
+        let _ = self.c().execute(
+            "INSERT INTO audit(ts,user_id,source,host_id,action,detail) VALUES(?,?,?,?,?,?)",
+            params![now(), user, source, host, action, d],
+        );
+    }
+
+    pub fn recent_audit(&self, limit: i64) -> Result<Vec<AuditRow>> {
+        let c = self.c();
+        let mut st = c.prepare("SELECT ts,user_id,source,host_id,action,detail FROM audit ORDER BY id DESC LIMIT ?")?;
+        let rows = st.query_map([limit], |r| Ok(AuditRow { ts: r.get(0)?, user_id: r.get(1)?, source: r.get(2)?, host_id: r.get(3)?, action: r.get(4)?, detail: r.get(5)? }))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 }

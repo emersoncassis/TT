@@ -52,6 +52,12 @@ pub struct DeviceProfile {
     pub enable_support: bool,
     #[serde(default)]
     pub legacy_hint: bool,
+    /// Command prefixes the MCP `run_readonly` tool may execute on this device type.
+    #[serde(default)]
+    pub readonly: Vec<String>,
+    /// Allow `|` in read-only commands (network CLIs use `| include`, `| match`...).
+    #[serde(default)]
+    pub allow_pipe: bool,
     #[serde(default)]
     pub quick_commands: Vec<QuickCommand>,
     #[serde(default)]
@@ -61,6 +67,23 @@ pub struct DeviceProfile {
 impl DeviceProfile {
     pub fn is_netconf(&self) -> bool {
         self.mode.as_deref() == Some("netconf")
+    }
+
+    /// True when `cmd` is a single read-only command this profile allows.
+    pub fn is_readonly_command(&self, cmd: &str) -> bool {
+        let c = cmd.trim();
+        if c.is_empty() || c.len() > 300 {
+            return false;
+        }
+        let banned: &[char] = &[';', '&', '>', '<', '`', '$', '(', ')', '\n', '\r', '\\'];
+        const DENY: &[&str] = &["--vacuum", "--rotate", "--flush", "--sync", "file="];
+        if DENY.iter().any(|d| c.contains(d)) || c.contains(banned) || (!self.allow_pipe && c.contains('|')) {
+            return false;
+        }
+        self.readonly.iter().any(|p| match p.strip_suffix('$') {
+            Some(exact) => c == exact, // entry ending in '$' must match exactly
+            None => c == p || c.starts_with(&format!("{p} ")),
+        })
     }
 
     /// Username actually sent to the device (e.g. MikroTik `admin+ct`).
@@ -130,6 +153,33 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), p.len());
         assert!(p.iter().any(|x| x.is_netconf()));
+    }
+
+    #[test]
+    fn readonly_allowlist() {
+        let ps = builtin_profiles();
+        let mk = ps.iter().find(|x| x.id == "mikrotik").unwrap();
+        assert!(mk.is_readonly_command("/ip address print"));
+        assert!(mk.is_readonly_command("/interface print detail"));
+        assert!(!mk.is_readonly_command("/system reset-configuration"));
+        assert!(!mk.is_readonly_command("/ip address print; /system reboot"));
+        let cisco = ps.iter().find(|x| x.id == "cisco-ios").unwrap();
+        assert!(cisco.is_readonly_command("show ip interface brief"));
+        assert!(cisco.is_readonly_command("show running-config | include hostname"));
+        assert!(!cisco.is_readonly_command("configure terminal"));
+        assert!(!cisco.is_readonly_command("reload"));
+        let deb = ps.iter().find(|x| x.id == "debian").unwrap();
+        assert!(deb.is_readonly_command("uptime"));
+        assert!(!deb.is_readonly_command("uptime | sh"));
+        assert!(!deb.is_readonly_command("rm -rf /"));
+        assert!(!deb.is_readonly_command("cat /etc/shadow"));
+        assert!(deb.is_readonly_command("cat /etc/os-release"));
+        assert!(!deb.is_readonly_command("cat /etc/os-release /etc/shadow"));
+        assert!(!deb.is_readonly_command("ip link set eth0 down"));
+        assert!(!deb.is_readonly_command("ss -K"));
+        assert!(!deb.is_readonly_command("journalctl --vacuum-size=1M"));
+        assert!(!deb.is_readonly_command("journalctl -n 5 --vacuum-size=1M"));
+        assert!(!mk.is_readonly_command("/export compact file=x"));
     }
 
     #[test]

@@ -13,7 +13,7 @@ use axum::{
 };
 use rand::RngExt;
 use sha2::{Digest, Sha256};
-use tt_core::{profiles::DeviceProfile, vault::Vault};
+use tt_core::{profiles::DeviceProfile, tunnel::RunningTunnel, vault::Vault};
 
 use crate::db::{Db, User};
 
@@ -31,6 +31,49 @@ pub struct AppState {
     pub attempts: Mutex<HashMap<IpAddr, Attempts>>,
     /// Valid hash verified for unknown users so timing doesn't reveal account existence.
     pub dummy_hash: String,
+    /// Allow tunnels to listen on non-loopback addresses (server admin decision).
+    pub allow_public_tunnels: bool,
+    pub tunnels: tokio::sync::Mutex<HashMap<i64, RunningTunnel>>,
+    pub live: Mutex<HashMap<u64, Arc<LiveSession>>>,
+    pub next_live: std::sync::atomic::AtomicU64,
+}
+
+/// An open interactive terminal: its recent output (for AI/MCP) and a channel to push suggestions.
+pub struct LiveSession {
+    pub id: u64,
+    pub user_id: i64,
+    pub host_id: i64,
+    pub host_name: String,
+    pub profile_id: String,
+    pub buffer: Mutex<String>,
+    pub push: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
+}
+
+impl LiveSession {
+    pub fn append(&self, text: &str) {
+        let mut b = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        b.push_str(text);
+        if b.len() > 65536 {
+            let cut = b.len() - 49152;
+            let cut = (cut..b.len()).find(|i| b.is_char_boundary(*i)).unwrap_or(b.len());
+            b.drain(..cut);
+        }
+    }
+
+    /// Last `lines` lines of output with ANSI escapes removed and secrets masked.
+    pub fn tail_clean(&self, lines: usize) -> String {
+        let raw = self.buffer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let clean = strip_ansi(&raw);
+        let all: Vec<&str> = clean.lines().collect();
+        let start = all.len().saturating_sub(lines);
+        tt_core::redact::redact(&all[start..].join("\n"))
+    }
+}
+
+pub fn strip_ansi(s: &str) -> String {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>MD78]|\r").expect("regex"));
+    re.replace_all(s, "").into_owned()
 }
 
 pub type Shared = Arc<AppState>;
@@ -185,6 +228,11 @@ mod tests {
         assert!(origin_ok(&h));
         h.insert(header::ORIGIN, "https://evil.example".parse().unwrap());
         assert!(!origin_ok(&h));
+    }
+
+    #[test]
+    fn ansi_stripping() {
+        assert_eq!(strip_ansi("\x1b[31mred\x1b[0m text\r\n"), "red text\n");
     }
 
     #[test]

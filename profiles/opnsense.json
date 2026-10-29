@@ -84,5 +84,16 @@
     "Ative o SSH em System > Settings > Administration.",
     "O menu do console usa a opção 8 para Shell; o TT envia essa escolha sozinho.",
     "Backup: /conf/config.xml pelo gerenciador de arquivos."
+  ],
+  "readonly": [
+    "pfctl -sr$",
+    "pfctl -si$",
+    "pfctl -sn$",
+    "ifconfig -a$",
+    "netstat -rn$",
+    "sockstat -4 -l$",
+    "opnsense-version$",
+    "uname -a$",
+    "uptime$"
   ]
 }

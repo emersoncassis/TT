@@ -58,7 +58,7 @@ function applyBrand() {
 
 function brandEl() {
   const b = state.brand;
-  return h('div', { class: 'brand' }, b.logo ? h('img', { src: '/branding/logo', alt: '' }) : h('span', { class: 'dot' }), h('span', {}, b.name || 'TT'));
+  return h('div', { class: 'brand' }, h('img', { src: b.logo ? '/branding/logo' : '/assets/logo-ic-mark.png', alt: '' }), h('span', {}, b.name || 'TT'), b.tagline === '' ? null : h('small', {}, b.tagline || 'Terminal Tools'));
 }
 
 function renderAuth(mode) {
@@ -100,6 +100,8 @@ function renderShell() {
     h('div', { class: 'topbar' }, brandEl(),
       h('div', { class: 'row' },
         h('span', { class: 'muted' }, state.me.username, state.me.role === 'admin' ? ' · administrador' : ''),
+        h('button', { onclick: tunnelsDialog }, 'Túneis'),
+        h('button', { onclick: aiDialog }, 'IA e MCP'),
         state.me.role === 'admin' ? h('button', { onclick: usersDialog }, 'Usuários') : null,
         h('button', { onclick: passwordDialog }, 'Minha senha'),
         h('button', { onclick: async () => { await api('/api/logout', { method: 'POST' }); location.reload(); } }, 'Sair'))),
@@ -235,20 +237,25 @@ function hostKeyDialog(tab, m) {
 
 function buildTerminal(tab) {
   const p = tab.profile;
-  const term = new Terminal({ fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: 14, cursorBlink: true, scrollback: 10000, theme: { background: '#000000' } });
+  const term = new Terminal({ fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: 14, cursorBlink: true, scrollback: 10000, theme: { background: '#000000', foreground: '#f3ecdc', cursor: '#c8b077', selectionBackground: '#3a352b' } });
   const fit = new FitAddon.FitAddon(); term.loadAddon(fit);
   tab.term = term; tab.fit = fit;
   const box = h('div', { class: 'termbox' });
   const drawer = h('div', { class: 'drawer' });
   const btn = (label, which) => h('button', { onclick: () => toggleDrawer(which) }, label);
-  const tools = h('div', { class: 'paneltools' }, p.quick_commands.length ? btn('Comandos', 'cmds') : null, p.sftp === 'none' ? null : btn('Arquivos', 'files'), h('button', { onclick: () => { const n = state.hosts.find(x => x.id === tab.host.id); openSession(n || tab.host); } }, 'Duplicar'));
+  const tools = h('div', { class: 'paneltools' }, btn('Assistente', 'ai'), p.quick_commands.length ? btn('Comandos', 'cmds') : null, p.sftp === 'none' ? null : btn('Arquivos', 'files'), h('button', { onclick: () => { const n = state.hosts.find(x => x.id === tab.host.id); openSession(n || tab.host); } }, 'Duplicar'));
   tab.pane.append(h('div', { class: 'termwrap' }, box), drawer, tools);
   let drawerKind = null;
-  const toggleDrawer = kind => {
-    if (drawerKind === kind) { drawer.classList.remove('open'); drawerKind = null; }
-    else { drawerKind = kind; drawer.classList.add('open'); drawer.replaceChildren(kind === 'cmds' ? commandsPanel(tab) : filesPanel(tab)); }
+  const showDrawer = kind => {
+    drawerKind = kind; drawer.classList.add('open');
+    drawer.replaceChildren(kind === 'cmds' ? commandsPanel(tab) : kind === 'ai' ? aiPanel(tab) : filesPanel(tab));
     setTimeout(() => fit.fit(), 50);
   };
+  const toggleDrawer = kind => {
+    if (drawerKind === kind) { drawer.classList.remove('open'); drawerKind = null; setTimeout(() => fit.fit(), 50); }
+    else showDrawer(kind);
+  };
+  tab.showDrawer = showDrawer;
   term.open(box); fit.fit();
   const ws = new WebSocket(wsUrl(`/api/term/${tab.host.id}`)); ws.binaryType = 'arraybuffer'; tab.ws = ws;
   const enc = new TextEncoder();
@@ -261,12 +268,62 @@ function buildTerminal(tab) {
     else if (m.t === 'error') term.writeln(`\r\n\x1b[31m${m.msg}\x1b[0m`);
     else if (m.t === 'ready') { tab.label.textContent = tab.host.name; fit.fit(); term.focus(); }
     else if (m.t === 'closed') term.writeln('\r\n\x1b[90m[sessão encerrada]\x1b[0m');
+    else if (m.t === 'suggestion') { aiState(tab); tab.ai.suggestions.push(m); showDrawer('ai'); }
   };
   ws.onclose = () => { tab.label.textContent = tab.host.name + ' ⏹'; };
   term.onData(d => { if (ws.readyState === 1) ws.send(enc.encode(d)); });
   term.onResize(({ cols, rows }) => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'resize', cols, rows })); });
   new ResizeObserver(() => { if (state.active === tab) try { fit.fit(); } catch {} }).observe(box);
   tab.sendText = (text, run) => { if (ws.readyState === 1) ws.send(enc.encode(run ? text + '\n' : text)); term.focus(); };
+}
+
+/* ---------- AI assistant (suggests only, never executes by itself) ---------- */
+function aiState(tab) { if (!tab.ai) tab.ai = { messages: [], suggestions: [], log: null, sendScreen: true }; return tab.ai; }
+
+function termScreen(term, n = 80) {
+  const b = term.buffer.active, out = [];
+  for (let i = Math.max(0, b.length - n); i < b.length; i++) { const l = b.getLine(i); if (l) out.push(l.translateToString(true)); }
+  return out.join('\n').replace(/\s+$/, '');
+}
+
+function cmdCard(tab, command, readonly, note) {
+  const run = () => { if (!readonly && !confirm(`Executar este comando no equipamento?\n\n${command}`)) return; tab.sendText(command, true); };
+  return h('div', { class: 'cmdcard' }, note ? h('div', { class: 'dpad muted' }, note) : null, h('pre', {}, command),
+    h('div', { class: 'acts' }, h('button', { onclick: () => tab.sendText(command, false) }, 'Colar'),
+      h('button', { class: readonly ? 'primary' : '', onclick: run }, readonly ? '▶ Executar (leitura)' : '▶ Executar…'),
+      readonly ? null : h('span', { class: 'warn', style: 'font-size:12px;align-self:center' }, 'pode alterar o equipamento')));
+}
+
+function aiPanel(tab) {
+  const st = aiState(tab);
+  const log = h('div', { class: 'log' }); st.log = log;
+  const input = h('textarea', { rows: 3, placeholder: 'Pergunte algo sobre o que está na tela…' });
+  const screenChk = h('input', { type: 'checkbox', checked: st.sendScreen, onchange: () => { st.sendScreen = screenChk.checked; } });
+  const draw = () => {
+    log.replaceChildren(...(st.messages.length || st.suggestions.length ? [] : [h('div', { class: 'muted' }, 'O assistente lê o que está na sua tela (com senhas e chaves mascaradas) e sugere comandos e boas práticas. Ele nunca executa nada sozinho.')]));
+    for (const m of st.messages) {
+      const el = h('div', { class: 'msg ' + m.role }, m.content.split(/```[\s\S]*?```/g).join('').trim() || (m.role === 'user' ? m.content : ''));
+      for (const c of (m.commands || [])) el.append(cmdCard(tab, c.command, c.readonly));
+      log.append(el);
+    }
+    st.suggestions.forEach((sg, i) => { const el = h('div', { class: 'msg' }, h('div', { class: 'muted' }, `Sugerido via ${sg.source}${sg.reason ? ': ' + sg.reason : ''}`), cmdCard(tab, sg.command, sg.readonly), h('div', { class: 'acts', style: 'padding:6px 0 0' }, h('button', { class: 'ghost', onclick: () => { st.suggestions.splice(i, 1); draw(); } }, 'Descartar'))); log.append(el); });
+    log.scrollTop = log.scrollHeight;
+  };
+  const send = async () => {
+    const text = input.value.trim(); if (!text) return;
+    input.value = ''; st.messages.push({ role: 'user', content: text }); draw();
+    const wait = h('div', { class: 'msg muted' }, 'Pensando…'); log.append(wait);
+    try {
+      const r = await api('/api/ai/chat', { method: 'POST', body: { host_id: tab.host.id, messages: st.messages.map(m => ({ role: m.role, content: m.content })), screen: st.sendScreen ? termScreen(tab.term) : '' } });
+      st.messages.push({ role: 'assistant', content: r.reply, commands: r.commands });
+    } catch (e) { st.messages.push({ role: 'assistant', content: 'Erro: ' + e.message }); }
+    draw();
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  draw();
+  return h('div', { class: 'chat' }, h('h3', {}, 'Assistente de IA'), log,
+    h('div', { class: 'input' }, h('label', { class: 'chk' }, screenChk, 'Enviar a tela ao assistente (segredos mascarados)'), input,
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: send }, 'Enviar'), h('button', { class: 'ghost', onclick: () => { st.messages = []; draw(); } }, 'Limpar'), h('button', { class: 'ghost', onclick: aiDialog }, 'Configurar'))));
 }
 
 /* ---------- quick commands ---------- */
@@ -377,6 +434,58 @@ function pretty(xml) {
     };
     return walk(d.documentElement, '');
   } catch { return xml; }
+}
+
+/* ---------- tunnels ---------- */
+async function tunnelsDialog() {
+  const body = h('div');
+  const render = async () => {
+    const [list, hosts] = await Promise.all([api('/api/tunnels'), api('/api/hosts')]);
+    const hostName = id => (hosts.find(x => x.id === id) || {}).name || '?';
+    const f = { host: h('select', {}, hosts.map(x => h('option', { value: x.id }, x.name))), name: h('input', { placeholder: 'ex.: Painel da câmera' }),
+      kind: h('select', {}, h('option', { value: 'local' }, 'Local: porta → destino'), h('option', { value: 'dynamic' }, 'Dinâmico: proxy SOCKS5')),
+      lport: h('input', { type: 'number', placeholder: 'porta local (≥1024)' }), dhost: h('input', { placeholder: 'destino, ex.: 192.168.1.10' }), dport: h('input', { type: 'number', placeholder: 'porta destino' }) };
+    const err = h('div', { class: 'err' });
+    const destBox = h('div', { class: 'grid2' }, field('Destino (visto pelo host SSH)', f.dhost), field('Porta destino', f.dport));
+    const sync = () => { destBox.style.display = f.kind.value === 'dynamic' ? 'none' : ''; }; f.kind.addEventListener('change', sync); sync();
+    const act = async (path, method = 'POST') => { try { await api(path, { method }); } catch (e) { alert(e.message); } render(); };
+    body.replaceChildren(
+      h('div', { class: 'note' }, 'O túnel escuta no computador onde o TT está rodando (127.0.0.1), não no navegador. Para iniciar, abra um terminal do host uma vez para confiar na chave.'),
+      list.length ? h('table', {}, list.map(t => h('tr', {}, h('td', {}, h('div', {}, t.name), h('div', { class: 'muted', style: 'font-size:12px' }, `${hostName(t.host_id)} · ${t.kind === 'dynamic' ? 'SOCKS5' : `${t.dest_host}:${t.dest_port}`} · ${t.listen_host}:${t.listen_port}`)),
+        h('td', {}, h('span', { class: 'pill' + (t.running ? ' run' : '') }, t.running ? 'ativo' : 'parado')),
+        h('td', { style: 'text-align:right;white-space:nowrap' }, t.running ? h('button', { onclick: () => act(`/api/tunnels/${t.id}/stop`) }, 'Parar') : h('button', { class: 'primary', onclick: () => act(`/api/tunnels/${t.id}/start`) }, 'Iniciar'), ' ', h('button', { class: 'danger', onclick: () => { if (confirm('Excluir túnel?')) act(`/api/tunnels/${t.id}`, 'DELETE'); } }, 'Excluir'))))) : h('div', { class: 'muted', style: 'padding:12px 0' }, 'Nenhum túnel.'),
+      h('h3', { style: 'margin:16px 0 0' }, 'Novo túnel'), h('div', { class: 'grid2' }, field('Host SSH', f.host), field('Nome', f.name)),
+      h('div', { class: 'grid2' }, field('Tipo', f.kind), field('Porta local', f.lport)), destBox, err,
+      h('div', { style: 'margin-top:10px' }, h('button', { class: 'primary', onclick: async () => { err.textContent = ''; try { await api('/api/tunnels', { method: 'POST', body: { host_id: +f.host.value, name: f.name.value, kind: f.kind.value, listen_port: +f.lport.value, dest_host: f.dhost.value, dest_port: +f.dport.value || 0 } }); render(); } catch (e) { err.textContent = e.message; } } }, 'Criar')));
+  };
+  await render();
+  modal('Túneis SSH', body, { wide: true });
+}
+
+/* ---------- AI + MCP settings ---------- */
+async function aiDialog() {
+  const cfg = await api('/api/ai/settings');
+  const f = { provider: h('select', {}, h('option', { value: 'anthropic' }, 'Anthropic (Claude)'), h('option', { value: 'openai' }, 'OpenAI ou compatível')), base: h('input', { value: cfg.base_url, placeholder: 'padrão do provedor' }),
+    model: h('input', { value: cfg.model, placeholder: 'ex.: claude-sonnet-5-5' }), key: h('input', { type: 'password', autocomplete: 'new-password', placeholder: cfg.has_key ? '(chave salva — digite para trocar)' : 'sua chave de API' }),
+    screen: h('input', { type: 'checkbox', checked: cfg.send_screen, style: 'width:auto' }) };
+  f.provider.value = cfg.provider;
+  const err = h('div', { class: 'err' }), tokBox = h('div'), tokList = h('div');
+  const loadTokens = async () => {
+    const t = await api('/api/tokens');
+    tokList.replaceChildren(t.length ? h('table', {}, t.map(x => h('tr', {}, h('td', {}, x.name), h('td', { class: 'muted' }, x.scope === 'exec' ? 'leitura + comandos seguros' : 'só leitura'), h('td', { style: 'text-align:right' }, h('button', { class: 'danger', onclick: async () => { await api(`/api/tokens/${x.id}`, { method: 'DELETE' }); loadTokens(); } }, 'Revogar'))))) : h('div', { class: 'muted' }, 'Nenhum token.'));
+  };
+  const tname = h('input', { placeholder: 'nome (ex.: meu assistente)' }), tscope = h('select', {}, h('option', { value: 'read' }, 'Só leitura e sugestões'), h('option', { value: 'exec' }, 'Também executar comandos de leitura'));
+  const m = modal('IA e MCP', h('div', {},
+    h('h3', { style: 'margin:0' }, 'Assistente de IA'), h('div', { class: 'note' }, 'Usa a sua própria chave de API. A chave fica criptografada no servidor e nunca volta ao navegador. O assistente só sugere comandos; quem executa é você.'),
+    h('div', { class: 'grid2' }, field('Provedor', f.provider), field('Modelo', f.model)),
+    cfg.can_set_endpoint ? field('Endereço da API (opcional, só administradores)', f.base) : null, field('Chave de API', f.key),
+    h('label', { class: 'chk', style: 'margin-top:10px' }, f.screen, 'Enviar a tela do terminal por padrão (senhas e chaves são mascaradas antes)'), err,
+    h('div', { style: 'margin:10px 0 20px' }, h('button', { class: 'primary', onclick: async () => { err.textContent = ''; try { await api('/api/ai/settings', { method: 'PUT', body: { provider: f.provider.value, base_url: f.base.value, model: f.model.value, api_key: f.key.value, send_screen: f.screen.checked } }); err.textContent = ''; f.key.value = ''; f.key.placeholder = '(chave salva)'; err.className = 'okc'; err.textContent = 'Salvo.'; } catch (e) { err.className = 'err'; err.textContent = e.message; } } }, 'Salvar')),
+    h('h3', { style: 'margin:0' }, 'Servidor MCP'), h('div', { class: 'note' }, 'Deixe outro assistente de IA usar o TT: ler a tela, sugerir comandos (você aprova) e, com token de execução, rodar só comandos de leitura permitidos para cada tipo de equipamento.',
+      h('div', {}, 'HTTP: ', h('code', {}, `${location.origin}/mcp`), ' com cabeçalho Authorization: Bearer <token>.'), h('div', {}, 'Cliente que abre processo: ', h('code', {}, `tt mcp --url ${location.origin} --token <token>`))),
+    tokList, tokBox, h('div', { class: 'grid2' }, field('Novo token', tname), field('Permissão', tscope)),
+    h('div', { style: 'margin-top:10px' }, h('button', { onclick: async () => { try { const r = await api('/api/tokens', { method: 'POST', body: { name: tname.value, scope: tscope.value } }); tokBox.replaceChildren(h('div', { class: 'warn' }, 'Copie agora: o token não será mostrado de novo.'), h('code', { class: 'tok' }, r.token)); tname.value = ''; loadTokens(); } catch (e) { alert(e.message); } } }, 'Criar token'))), { wide: true });
+  loadTokens();
 }
 
 /* ---------- admin ---------- */

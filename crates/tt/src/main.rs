@@ -3,7 +3,10 @@
 //!   tt serve   -> multi-user web server with login (first account becomes admin)
 mod api;
 mod app;
+mod conn;
 mod db;
+mod features;
+mod mcp;
 mod term;
 mod ui;
 
@@ -35,6 +38,17 @@ enum Cmd {
         /// Mark cookies Secure (use when TT sits behind an HTTPS reverse proxy).
         #[arg(long, env = "TT_SECURE_COOKIES")]
         secure_cookies: bool,
+        /// Let users create tunnels that listen on non-loopback addresses.
+        #[arg(long, env = "TT_ALLOW_PUBLIC_TUNNELS")]
+        allow_public_tunnels: bool,
+    },
+    /// MCP bridge over stdio for AI clients that launch a process (talks to a running TT server).
+    Mcp {
+        #[arg(long, env = "TT_URL", default_value = "http://127.0.0.1:8443")]
+        url: String,
+        /// Personal token created in TT (AI & MCP).
+        #[arg(long, env = "TT_TOKEN")]
+        token: String,
     },
     /// Single-user mode on this machine (listens on 127.0.0.1 only).
     Local {
@@ -76,19 +90,23 @@ fn open_browser(url: &str) {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())).init();
     let cli = Cli::parse();
+    if let Cmd::Mcp { url, token } = &cli.cmd {
+        return mcp::stdio_bridge(url.clone(), token.clone()).await;
+    }
     std::fs::create_dir_all(&cli.data)?;
     let db = db::Db::open(&cli.data.join("tt.db"))?;
     let vault = Vault::new(&load_master_key(&cli.data)?);
     let profiles = profiles::load_profiles(Some(&cli.data.join("profiles")));
 
-    let (bind, local_token, secure_cookies, open) = match &cli.cmd {
-        Cmd::Serve { bind, secure_cookies } => (*bind, None, *secure_cookies, false),
+    let (bind, local_token, secure_cookies, open, public_tunnels) = match &cli.cmd {
+        Cmd::Mcp { .. } => unreachable!(),
+        Cmd::Serve { bind, secure_cookies, allow_public_tunnels } => (*bind, None, *secure_cookies, false, *allow_public_tunnels),
         Cmd::Local { port, no_open } => {
             if db.user_by_name("local")?.is_none() {
                 // Unusable password: this account is only reachable through the launch token.
                 db.create_user("local", &hash_password(&new_token())?, "admin")?;
             }
-            (SocketAddr::from(([127, 0, 0, 1], *port)), Some(new_token()), false, !*no_open)
+            (SocketAddr::from(([127, 0, 0, 1], *port)), Some(new_token()), false, !*no_open, false)
         }
     };
 
@@ -101,6 +119,10 @@ async fn main() -> Result<()> {
         secure_cookies,
         attempts: Mutex::new(HashMap::new()),
         dummy_hash: hash_password(&new_token())?,
+        allow_public_tunnels: public_tunnels,
+        tunnels: Default::default(),
+        live: Default::default(),
+        next_live: Default::default(),
     });
 
     let app = Router::new()

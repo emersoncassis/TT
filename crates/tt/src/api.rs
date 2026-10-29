@@ -40,6 +40,8 @@ pub fn router(state: Shared) -> Router {
         .route("/api/sftp/{id}/delete", post(sftp_delete))
         .route("/api/sftp/{id}/rename", post(sftp_rename))
         .route("/local-login", get(local_login))
+        .merge(crate::features::routes())
+        .route("/mcp", post(crate::mcp::mcp_http))
         .layer(axum::middleware::from_fn(csrf_guard))
         .with_state(state)
 }
@@ -311,24 +313,12 @@ async fn forget_known_host(Auth(u): Auth, State(s): State<Shared>, Query(q): Que
 /// terminal to the host once); unknown or changed keys are refused here.
 async fn sftp_session(s: &Shared, user: &User, id: i64) -> ApiResult<(ssh::SshHandle, russh_sftp::client::SftpSession)> {
     let row = s.db.get_host(user.id, id)?.ok_or_else(ApiError::not_found)?;
-    let profile = s.profiles.iter().find(|p| p.id == row.view.profile_id).cloned();
-    if let Some(p) = &profile {
+    if let Some(p) = s.profiles.iter().find(|p| p.id == row.view.profile_id) {
         if p.sftp == tt_core::profiles::SftpSupport::None {
             return Err(ApiError::bad(format!("{} does not offer SFTP", p.name)));
         }
     }
-    let params = term::connect_params(s, &row)?;
-    let db = s.clone();
-    let uid = user.id;
-    let check: ssh::HostKeyCheck = std::sync::Arc::new(move |info: ssh::HostKeyInfo| {
-        let db = db.clone();
-        Box::pin(async move {
-            matches!(db.db.known_fingerprint(uid, &info.host, info.port), Ok(Some(fp)) if fp == info.fingerprint)
-        })
-    });
-    let handle = ssh::connect(&params, check)
-        .await
-        .map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#} (open a terminal to this host first to trust its key)")))?;
+    let handle = crate::conn::connect_trusted(s, user.id, &row).await?;
     let sf = sftp::open(&handle).await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
     Ok((handle, sf))
 }
