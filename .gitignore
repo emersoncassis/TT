@@ -11,3 +11,4 @@ CygUtils*.plugin
 *.msi
 *.plugin
 Prog/
+dist/
