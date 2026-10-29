@@ -465,10 +465,25 @@ async function tunnelsDialog() {
 /* ---------- AI + MCP settings ---------- */
 async function aiDialog() {
   const cfg = await api('/api/ai/settings');
-  const f = { provider: h('select', {}, h('option', { value: 'anthropic' }, 'Anthropic (Claude)'), h('option', { value: 'openai' }, 'OpenAI ou compatível')), base: h('input', { value: cfg.base_url, placeholder: 'padrão do provedor' }),
-    model: h('input', { value: cfg.model, placeholder: 'ex.: claude-sonnet-5-5' }), key: h('input', { type: 'password', autocomplete: 'new-password', placeholder: cfg.has_key ? '(chave salva — digite para trocar)' : 'sua chave de API' }),
+  const f = { provider: h('select', {}, h('option', { value: 'anthropic' }, 'Anthropic (Claude)'), h('option', { value: 'gemini' }, 'Google (Gemini)'), h('option', { value: 'openrouter' }, 'OpenRouter (inclui modelos gratuitos)'), h('option', { value: 'openai' }, 'OpenAI ou compatível')), base: h('input', { value: cfg.base_url, placeholder: 'padrão do provedor' }),
+    model: h('input', { value: cfg.model, list: 'tt-models' }), key: h('input', { type: 'password', autocomplete: 'new-password', placeholder: cfg.has_key ? '(chave salva — digite para trocar)' : 'sua chave de API' }),
     screen: h('input', { type: 'checkbox', checked: cfg.send_screen, style: 'width:auto' }) };
   f.provider.value = cfg.provider;
+  const modelList = h('datalist', { id: 'tt-models' }), tip = h('div', { class: 'note' }), freeBtn = h('button', { class: 'ghost' }, 'Listar modelos gratuitos do OpenRouter');
+  const HINTS = {
+    anthropic: ['claude-sonnet-5-5', 'ex.: claude-sonnet-5-5 (equilibrado) ou um Haiku (mais barato)', 'Dia a dia: um modelo pequeno/rápido basta para explicar saídas e sugerir comandos. Troque por um modelo maior só em problemas difíceis (roteamento, firewall, conflito de configuração).'],
+    gemini: ['gemini-3.8-flash', 'ex.: gemini-3.8-flash', 'Os modelos Flash do Gemini costumam ter o melhor custo-benefício para uso diário e há uma camada gratuita (com limite de uso). Atenção: na camada gratuita o Google pode usar o conteúdo enviado para melhorar seus produtos; para equipamento de cliente, prefira a camada paga.'],
+    openrouter: ['', 'cole o id do modelo (ex.: um terminado em :free)', 'Uma chave só para vários modelos. Os que terminam em :free não custam nada, mas têm limite de uso e o provedor pode registrar ou treinar com o que você envia. Bom para estudo e laboratório; em equipamento de cliente, use um modelo pago.'],
+    openai: ['', 'nome do modelo do seu provedor', 'Serve para OpenAI e para qualquer servidor compatível, inclusive modelo local (endereço da API só para administradores), que mantém tudo dentro da sua rede.'],
+  };
+  const upd = () => {
+    const [def, ph, text] = HINTS[f.provider.value]; f.model.placeholder = ph;
+    tip.replaceChildren(h('b', {}, 'Custo-benefício: '), text, h('div', { style: 'margin-top:6px' }, 'Boa prática: deixe "enviar a tela" ligado só quando precisar (a IA só vê o que está visível) e apague o histórico ao trocar de cliente. Senhas e chaves são mascaradas antes de sair, mas o restante da tela vai ao provedor.'));
+    freeBtn.style.display = f.provider.value === 'openrouter' ? '' : 'none';
+  };
+  f.provider.addEventListener('change', () => { if (!f.model.value || Object.values(HINTS).some(x => x[0] && x[0] === f.model.value)) f.model.value = HINTS[f.provider.value][0]; upd(); });
+  freeBtn.onclick = async () => { try { const r = await api('/api/ai/free-models'); modelList.replaceChildren(...r.models.map(x => h('option', { value: x.id }, `${x.name} · ${Math.round(x.context / 1000)}k`))); freeBtn.textContent = `${r.models.length} modelos gratuitos: clique no campo Modelo para escolher`; } catch (e) { freeBtn.textContent = e.message; } };
+  upd();
   const err = h('div', { class: 'err' }), tokBox = h('div'), tokList = h('div');
   const loadTokens = async () => {
     const t = await api('/api/tokens');
@@ -477,7 +492,7 @@ async function aiDialog() {
   const tname = h('input', { placeholder: 'nome (ex.: meu assistente)' }), tscope = h('select', {}, h('option', { value: 'read' }, 'Só leitura e sugestões'), h('option', { value: 'exec' }, 'Também executar comandos de leitura'));
   const m = modal('IA e MCP', h('div', {},
     h('h3', { style: 'margin:0' }, 'Assistente de IA'), h('div', { class: 'note' }, 'Usa a sua própria chave de API. A chave fica criptografada no servidor e nunca volta ao navegador. O assistente só sugere comandos; quem executa é você.'),
-    h('div', { class: 'grid2' }, field('Provedor', f.provider), field('Modelo', f.model)),
+    h('div', { class: 'grid2' }, field('Provedor', f.provider), field('Modelo', f.model)), modelList, freeBtn, tip,
     cfg.can_set_endpoint ? field('Endereço da API (opcional, só administradores)', f.base) : null, field('Chave de API', f.key),
     h('label', { class: 'chk', style: 'margin-top:10px' }, f.screen, 'Enviar a tela do terminal por padrão (senhas e chaves são mascaradas antes)'), err,
     h('div', { style: 'margin:10px 0 20px' }, h('button', { class: 'primary', onclick: async () => { err.textContent = ''; try { await api('/api/ai/settings', { method: 'PUT', body: { provider: f.provider.value, base_url: f.base.value, model: f.model.value, api_key: f.key.value, send_screen: f.screen.checked } }); err.textContent = ''; f.key.value = ''; f.key.placeholder = '(chave salva)'; err.className = 'okc'; err.textContent = 'Salvo.'; } catch (e) { err.className = 'err'; err.textContent = e.message; } } }, 'Salvar')),

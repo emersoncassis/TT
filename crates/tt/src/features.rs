@@ -24,6 +24,7 @@ pub fn routes() -> Router<Shared> {
         .route("/api/tunnels/{id}/stop", post(stop_tunnel))
         .route("/api/ai/settings", get(get_ai).put(put_ai))
         .route("/api/ai/chat", post(ai_chat))
+        .route("/api/ai/free-models", get(free_models))
         .route("/api/tokens", get(list_tokens).post(create_token))
         .route("/api/tokens/{id}", delete(delete_token))
         .route("/api/audit", get(audit))
@@ -158,8 +159,8 @@ fn yes() -> bool {
 }
 
 async fn put_ai(Auth(u): Auth, State(s): State<Shared>, Json(i): Json<AiInput>) -> ApiResult<Json<Value>> {
-    if !matches!(i.provider.as_str(), "anthropic" | "openai") {
-        return Err(ApiError::bad("provider must be 'anthropic' or 'openai' (any OpenAI-compatible endpoint)"));
+    if !matches!(i.provider.as_str(), "anthropic" | "openai" | "gemini" | "openrouter") {
+        return Err(ApiError::bad("provider must be 'anthropic', 'openai' (any OpenAI-compatible endpoint), 'gemini' or 'openrouter'"));
     }
     let base_url = i.base_url.trim().trim_end_matches('/').to_string();
     let current = s.db.get_ai(u.id)?;
@@ -236,6 +237,22 @@ pub fn extract_commands(reply: &str, profile: Option<&tt_core::profiles::DeviceP
     out
 }
 
+/// Public list of OpenRouter's free models (no key needed). Model ids change often, so we ask OpenRouter instead of hard-coding them.
+async fn free_models(Auth(_u): Auth) -> ApiResult<Json<Value>> {
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(20)).build().map_err(anyhow::Error::from)?;
+    let v: Value = client.get("https://openrouter.ai/api/v1/models").send().await
+        .map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("could not reach OpenRouter: {}", e.without_url())))?
+        .json().await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("OpenRouter list unreadable: {}", e.without_url())))?;
+    let mut out: Vec<Value> = v["data"].as_array().map(|a| a.iter().filter_map(|m| {
+        let id = m["id"].as_str()?;
+        if !id.ends_with(":free") { return None; }
+        Some(json!({"id": id, "name": m["name"].as_str().unwrap_or(id), "context": m["context_length"].as_u64().unwrap_or(0)}))
+    }).collect()).unwrap_or_default();
+    out.sort_by(|a, b| b["context"].as_u64().cmp(&a["context"].as_u64()));
+    out.truncate(60);
+    Ok(Json(json!({ "models": out })))
+}
+
 pub async fn call_llm(s: &Shared, user_id: i64, system: &str, msgs: &[(String, String)]) -> Result<String, ApiError> {
     let a = s.db.get_ai(user_id)?;
     if a.key_enc.is_empty() {
@@ -244,14 +261,25 @@ pub async fn call_llm(s: &Shared, user_id: i64, system: &str, msgs: &[(String, S
     let key = s.vault.open(&a.key_enc)?;
     let client = reqwest::Client::builder().timeout(Duration::from_secs(90)).build().map_err(anyhow::Error::from)?;
     let bad_gateway = |m: String| ApiError(StatusCode::BAD_GATEWAY, m);
-    let text = if a.provider == "openai" {
-        let base = if a.base_url.is_empty() { "https://api.openai.com/v1".to_string() } else { a.base_url.clone() };
-        if a.model.is_empty() {
-            return Err(ApiError::bad("set the model name in AI & MCP"));
-        }
+    let text = if a.provider != "anthropic" {
+        let default_base = match a.provider.as_str() {
+            "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai",
+            "openrouter" => "https://openrouter.ai/api/v1",
+            _ => "https://api.openai.com/v1",
+        };
+        let base = if a.base_url.is_empty() { default_base.to_string() } else { a.base_url.clone() };
+        let model = match (a.model.is_empty(), a.provider.as_str()) {
+            (false, _) => a.model.clone(),
+            (true, "gemini") => "gemini-3.8-flash".to_string(),
+            _ => return Err(ApiError::bad("set the model name in AI & MCP")),
+        };
         let mut m = vec![json!({"role":"system","content":system})];
         m.extend(msgs.iter().map(|(r, c)| json!({"role":r,"content":c})));
-        let res = client.post(format!("{base}/chat/completions")).bearer_auth(&key).json(&json!({"model":a.model,"messages":m})).send().await.map_err(|e| bad_gateway(format!("AI request failed: {}", e.without_url())))?;
+        let mut req = client.post(format!("{base}/chat/completions")).bearer_auth(&key).json(&json!({"model":model,"messages":m}));
+        if a.provider == "openrouter" {
+            req = req.header("X-Title", "TT Terminal Tools").header("HTTP-Referer", "https://github.com/emersoncassis/TT");
+        }
+        let res = req.send().await.map_err(|e| bad_gateway(format!("AI request failed: {}", e.without_url())))?;
         let status = res.status();
         let v: Value = res.json().await.map_err(|e| bad_gateway(format!("AI response unreadable: {}", e.without_url())))?;
         if !status.is_success() {

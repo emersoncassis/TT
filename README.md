@@ -94,7 +94,7 @@ No modo servidor, o **primeiro acesso cria o administrador**, que depois cria os
 - **Túneis SSH:** encaminhamento local e proxy **SOCKS5**, com iniciar e parar pelo painel.
 - **Gerenciador de sessões** com pastas e busca.
 - **Multiusuário:** administrador e usuários, cada um com seus hosts.
-- **Assistente de IA** ao lado do terminal, com a **sua** chave de API (Anthropic ou compatível com OpenAI): lê a tela, explica e **sugere**. Nunca executa sozinho.
+- **Assistente de IA** ao lado do terminal, com a **sua** chave de API: **Claude, Gemini (Google), OpenRouter (inclui modelos gratuitos)** ou qualquer servidor compatível com OpenAI, com dicas de custo-benefício na própria tela: lê a tela, explica e **sugere**. Nunca executa sozinho.
 - **Servidor MCP** (HTTP e stdio): outra IA pode ler a tela, sugerir comandos e rodar comandos de **leitura** permitidos por equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
 - **Marca personalizável** (nome, cor, logo) por arquivo, sem recompilar.
 

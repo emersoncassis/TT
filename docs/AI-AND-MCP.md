@@ -6,11 +6,22 @@ Princípio: **a IA sugere, o técnico decide.** Nada é executado sozinho.
 
 Botão **Assistente** ao lado de cada terminal.
 
-- **Chave própria.** Em *IA e MCP* o usuário escolhe o provedor (Anthropic, ou OpenAI/qualquer endpoint compatível), o modelo e cola a chave de API. A chave é criptografada no servidor e nunca volta ao navegador. Endereço de API personalizado (ex.: um LLM local) só pode ser definido por administradores, porque faz o servidor abrir conexões para a URL informada.
+- **Chave própria.** Em *IA e MCP* o usuário escolhe o provedor — **Anthropic (Claude), Google (Gemini), OpenRouter** ou OpenAI/qualquer servidor compatível —, o modelo e cola a chave de API. A chave é criptografada no servidor e nunca volta ao navegador. Endereço de API personalizado (ex.: um LLM local) só pode ser definido por administradores, porque faz o servidor abrir conexões para a URL informada.
 - **Contexto.** A cada pergunta o navegador envia o que está na tela (as últimas linhas do terminal). O servidor **mascara segredos antes de enviar ao modelo** (chaves privadas, `secret`/`password`, `snmp community`, PSK/WPA, tokens) e inclui o tipo de equipamento e as notas do perfil no prompt do sistema. O usuário pode desligar o envio da tela.
 - **Só sugere.** As respostas trazem os comandos em cartões com **Colar** e **Executar**. Comandos que estão na lista de leitura do perfil têm execução direta; os demais mostram aviso e pedem confirmação.
 - **Injeção de prompt.** A tela é enviada dentro de `<terminal_screen>` e o prompt manda tratá-la como dado não confiável.
 - **Auditoria.** Cada pergunta gera um registro (sem o conteúdo).
+
+### Escolhendo provedor e modelo (custo-benefício)
+
+| Provedor | Quando usar | Observações |
+|---|---|---|
+| **Gemini (Google)** | Uso diário barato: os modelos *Flash* costumam dar o melhor custo-benefício, e há camada gratuita com limite de uso. | Na camada gratuita o Google pode usar o conteúdo enviado para melhorar seus produtos: para equipamento de cliente, prefira a camada paga. Modelo padrão: `gemini-3.8-flash`. |
+| **OpenRouter** | Uma chave para vários modelos, e **modelos gratuitos** (ids terminados em `:free`). O botão *Listar modelos gratuitos* consulta a lista pública do OpenRouter na hora, porque esses ids mudam com frequência. | Modelos gratuitos têm limite de uso e o provedor pode registrar o que você envia. Bom para estudo e laboratório. |
+| **Anthropic (Claude)** | Problemas difíceis (roteamento, firewall, configuração conflitante) em que a qualidade do raciocínio pesa mais que o preço. | Modelo padrão: `claude-sonnet-5-5`; um modelo menor sai mais barato no dia a dia. |
+| **OpenAI ou compatível** | Servidor próprio ou modelo local, que mantém tudo dentro da sua rede. | Endereço da API só para administradores. |
+
+Estratégia simples: modelo pequeno ou gratuito para explicar saídas e sugerir comandos de rotina; modelo maior só quando travar. Em ambiente de cliente, use plano pago/sem treino e deixe *enviar a tela* ligado só quando precisar: a redação de segredos é por padrões e **o restante da tela vai ao provedor**.
 
 ## 2. TT como servidor MCP (implementado)
 
