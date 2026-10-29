@@ -1,27 +1,61 @@
 # TT — Terminal Tools
 
-Estação de trabalho SSH **livre e aberta** para quem administra servidores e equipamentos de rede.
-Um único programa, dois modos:
+**Estação de trabalho SSH livre e aberta, para o técnico de campo, o analista de redes e o sysadmin — no seu computador ou acessada pela rede.**
+
+> 🚧 **Em pleno desenvolvimento (v0.1).** O que está aqui já funciona, mas ainda falta muita coisa e **a comunidade é bem-vinda para ajudar**: testar em equipamentos reais, corrigir comandos, criar perfis, traduzir e implementar o roadmap. Veja [Como ajudar](#como-ajudar).
+
+![Terminal e comandos prontos por tipo de equipamento](docs/screenshots/04-terminal-e-comandos.png)
+
+## Que dor o TT resolve
+
+- **"Cada equipamento tem um jeito diferente de entrar."** MikroTik quer `+ct` no usuário, Cisco pede `terminal length 0` e `enable`, pfSense cai num menu e você precisa digitar `8`, OpenWrt não tem SFTP por padrão. O TT conhece essas manhas e já faz isso por você, por **tipo de equipamento**.
+- **"Eu esqueço o comando."** Cada tipo traz comandos prontos e agrupados (diagnóstico, rede, firewall, backup…), com os perigosos marcados e pedindo confirmação.
+- **"Minhas senhas e IPs estão espalhados em planilhas e no bloco de notas."** Sessões organizadas em pastas, com segredos **criptografados** — e acesso pela rede com **usuário e senha** para a equipe toda, cada um com seus próprios hosts.
+- **"Preciso acessar de qualquer lugar, mas quem fala com os equipamentos é a máquina da rede interna."** No modo servidor, só o TT precisa alcançar os equipamentos; o técnico usa o navegador.
+- **"As ferramentas boas são pagas ou fechadas."** O TT é **MIT**: use, modifique, ponha a sua logo, distribua.
+
+## Para quem é
+
+Técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedores e ISPs pequenos, times de TI de empresas, sysadmins e homelabbers, estudantes de redes. Se você abre SSH em Linux, roteadores, firewalls e switches no dia a dia, é para você.
+
+## Dois modos, um programa
 
 | Modo | Comando | Para quê |
 |------|---------|----------|
-| **Local** | `tt local` | Uso individual na sua máquina. Abre o navegador já logado (sem senha), escuta só em `127.0.0.1`. |
-| **Servidor web** | `tt serve --bind 0.0.0.0:8443` | A sua máquina (ou um servidor) é quem fala SSH com os equipamentos; o painel é acessado pela rede, com **usuário e senha**. O primeiro acesso cria o **administrador**, que cria os demais usuários. |
+| **Local** | `tt local` | Uso individual. Abre o navegador já logado (sem senha), escuta só em `127.0.0.1`. |
+| **Servidor web** | `tt serve --bind 0.0.0.0:8443` | A sua máquina (ou um servidor) fala SSH com os equipamentos; o painel é acessado pela rede com **usuário e senha**. O primeiro acesso cria o **administrador**, que cria os demais usuários. |
 
-> Projeto *clean-room*: reimplementa **funcionalidades** de uma workstation SSH tradicional, sem copiar código, arte, nomes ou textos de nenhum software. Veja [docs/CLEAN-ROOM.md](docs/CLEAN-ROOM.md).
+## Telas
+
+| | |
+|---|---|
+| ![Primeiro acesso](docs/screenshots/01-primeiro-acesso.png) **Primeiro acesso:** cria o administrador | ![Cadastro de host](docs/screenshots/02-cadastro-host-mikrotik.png) **Cadastro por tipo de equipamento**, com avisos específicos |
+| ![Chave do host](docs/screenshots/03-confirmar-chave-do-host.png) **Confirmação da chave do host** (alerta forte se mudar) | ![SFTP](docs/screenshots/05-arquivos-sftp.png) **Arquivos por SFTP** ao lado do terminal |
+| ![Usuários](docs/screenshots/06-usuarios.png) **Administração de usuários** | |
 
 ## O que já funciona (v0.1)
 
-- Terminal SSH no navegador (xterm.js), abas, redimensionamento, autenticação por **senha, chave privada e keyboard-interactive**.
+- Terminal SSH no navegador (xterm.js), abas, redimensionamento; login por **senha, chave privada e keyboard-interactive**.
 - **Verificação de chave do host** (confiar na primeira vez; alerta forte se a chave mudar).
-- Gerenciador de sessões com pastas, busca e **segredos criptografados em repouso** (XChaCha20-Poly1305).
+- Gerenciador de sessões com pastas e busca; **segredos criptografados em repouso** (XChaCha20-Poly1305).
 - **Gerenciador de arquivos SFTP** (listar, enviar, baixar, criar pasta, renomear, excluir).
-- **Perfis de equipamento** com facilitadores: Debian/Ubuntu, Raspberry Pi, OpenWrt, pfSense, OPNsense, MikroTik, Cisco IOS/IOS-XE, Juniper Junos, Huawei VRP, NETCONF e genérico. Cada perfil traz comandos prontos, ajustes automáticos de login e avisos — veja [docs/PLATFORMS.md](docs/PLATFORMS.md).
-- **Console NETCONF** (RFC 6241/6242, framing 1.0 e 1.1) com modelos de operações.
+- **Perfis de equipamento:** Debian/Ubuntu, Raspberry Pi, OpenWrt, pfSense, OPNsense, MikroTik, Cisco IOS/IOS-XE, Juniper Junos, Huawei VRP, NETCONF e genérico — veja [docs/PLATFORMS.md](docs/PLATFORMS.md).
+- **Console NETCONF** (RFC 6241/6242, framing 1.0 e 1.1).
 - Usuários e administrador, senhas com Argon2id, limite de tentativas de login, proteção contra requisições cross-site.
-- Marca personalizável (nome, cor, logo) por arquivo — sem recompilar.
+- Marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
 
-Roadmap (túneis, X11, RDP/VNC, multi-execução, macros, **assistente de IA** e **servidor MCP**): [docs/SPEC.md](docs/SPEC.md) e [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
+## O que ainda falta (roadmap)
+
+Túneis SSH, multi-execução, macros, salto por bastion, gestão de chaves, TLS nativo e 2FA, gravação de sessões, telnet/serial, X11, RDP/VNC, **app desktop empacotado**, upload em streaming, tradução da interface, **assistente de IA** (sugere comandos e boas práticas, nunca executa sozinho) e **servidor MCP**. Detalhes em [docs/SPEC.md](docs/SPEC.md) e [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
+
+## Como ajudar
+
+- **Teste em equipamento real** (MikroTik, Cisco, Huawei, Junos, pfSense, OPNsense, OpenWrt, Raspberry) e abra uma issue dizendo o que funcionou ou falhou. Os comandos dos perfis foram escritos pela documentação pública e **ainda não foram validados em hardware**.
+- **Crie ou melhore perfis de equipamento:** é só um arquivo JSON em `profiles/`.
+- **Implemente algo do roadmap** ou traduza a interface.
+- **Aviso de segurança?** Veja [SECURITY.md](SECURITY.md). Regras de contribuição e a política clean-room: [CONTRIBUTING.md](CONTRIBUTING.md) e [docs/CLEAN-ROOM.md](docs/CLEAN-ROOM.md).
+
+> Projeto *clean-room*: reimplementa **funcionalidades** de uma workstation SSH tradicional, sem copiar código, arte, nomes ou textos de nenhum software.
 
 ## Rodando
 
