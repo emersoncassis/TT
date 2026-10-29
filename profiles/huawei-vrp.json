@@ -1,0 +1,25 @@
+{
+  "id": "huawei-vrp",
+  "name": "Huawei VRP (roteadores/switches)",
+  "description": "Equipamentos Huawei com VRP. Desliga paginação; NETCONF/SNETCONF disponível.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "none",
+  "init_commands": ["screen-length 0 temporary"],
+  "quick_commands": [
+    {"group": "Sistema", "label": "Versão", "command": "display version"},
+    {"group": "Sistema", "label": "CPU", "command": "display cpu-usage"},
+    {"group": "Sistema", "label": "Memória", "command": "display memory-usage"},
+    {"group": "Configuração", "label": "Configuração atual", "command": "display current-configuration"},
+    {"group": "Interfaces", "label": "Resumo de interfaces", "command": "display interface brief"},
+    {"group": "Interfaces", "label": "Interfaces IP", "command": "display ip interface brief"},
+    {"group": "L2", "label": "VLANs", "command": "display vlan"},
+    {"group": "L2", "label": "Vizinhos LLDP", "command": "display lldp neighbor brief"},
+    {"group": "L3", "label": "Tabela de rotas", "command": "display ip routing-table"},
+    {"group": "Logs", "label": "Log buffer", "command": "display logbuffer"}
+  ],
+  "notes": [
+    "Para NETCONF habilite o serviço SNETCONF e o service-type snetconf do usuário; confirme os comandos na documentação da sua versão de VRP.",
+    "Roteadores domésticos com HarmonyOS normalmente não expõem SSH/NETCONF; este perfil é para equipamentos corporativos VRP."
+  ]
+}

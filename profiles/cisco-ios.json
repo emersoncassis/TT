@@ -1,0 +1,36 @@
+{
+  "id": "cisco-ios",
+  "name": "Cisco IOS / IOS-XE",
+  "description": "Switches e roteadores Cisco IOS/IOS-XE. Desliga paginação e entra no modo enable se houver senha.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "none",
+  "init_commands": ["terminal length 0", "terminal width 0"],
+  "enable_support": true,
+  "legacy_hint": true,
+  "quick_commands": [
+    {"group": "Sistema", "label": "Versão", "command": "show version"},
+    {"group": "Sistema", "label": "Inventário", "command": "show inventory"},
+    {"group": "Sistema", "label": "Relógio e usuários", "command": "show clock; show users"},
+    {"group": "Configuração", "label": "Running-config", "command": "show running-config"},
+    {"group": "Configuração", "label": "Startup-config", "command": "show startup-config"},
+    {"group": "Configuração", "label": "Salvar (write memory)", "command": "write memory", "dangerous": true},
+    {"group": "Interfaces", "label": "Resumo de interfaces IP", "command": "show ip interface brief"},
+    {"group": "Interfaces", "label": "Status das portas", "command": "show interfaces status"},
+    {"group": "Interfaces", "label": "Erros nas interfaces", "command": "show interfaces counters errors"},
+    {"group": "L2", "label": "VLANs", "command": "show vlan brief"},
+    {"group": "L2", "label": "Tabela MAC", "command": "show mac address-table"},
+    {"group": "L2", "label": "Spanning-tree", "command": "show spanning-tree summary"},
+    {"group": "L2", "label": "EtherChannel", "command": "show etherchannel summary"},
+    {"group": "L2", "label": "Vizinhos CDP", "command": "show cdp neighbors detail"},
+    {"group": "L2", "label": "Vizinhos LLDP", "command": "show lldp neighbors"},
+    {"group": "L3", "label": "Rotas IP", "command": "show ip route"},
+    {"group": "L3", "label": "Vizinhos OSPF", "command": "show ip ospf neighbor"},
+    {"group": "L3", "label": "Resumo BGP", "command": "show ip bgp summary"},
+    {"group": "Logs", "label": "Log do equipamento", "command": "show logging"}
+  ],
+  "notes": [
+    "Se o equipamento tiver senha de enable, informe-a no cadastro do host; o TT envia `enable` e a senha após o login.",
+    "IOS antigo pode exigir algoritmos legados (diffie-hellman-group1-sha1, aes-cbc, ssh-rsa). Ative a opção 'Algoritmos legados' no host, ciente de que são menos seguros."
+  ]
+}

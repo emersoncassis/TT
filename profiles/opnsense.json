@@ -1,0 +1,88 @@
+{
+  "id": "opnsense",
+  "name": "OPNsense",
+  "description": "Firewall OPNsense (FreeBSD). O login SSH cai no menu do console; o TT escolhe a opção 8 (Shell) automaticamente.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "full",
+  "init_commands": [],
+  "post_login": [
+    {
+      "expect": "Enter an option:",
+      "send": "8\n",
+      "timeout_secs": 6
+    }
+  ],
+  "quick_commands": [
+    {
+      "group": "Firewall",
+      "label": "Regras ativas (pf)",
+      "command": "pfctl -sr"
+    },
+    {
+      "group": "Firewall",
+      "label": "Estatísticas do pf",
+      "command": "pfctl -si"
+    },
+    {
+      "group": "Firewall",
+      "label": "Tabela de estados (primeiros 50)",
+      "command": "pfctl -ss | head -n 50"
+    },
+    {
+      "group": "Rede",
+      "label": "Interfaces",
+      "command": "ifconfig -a"
+    },
+    {
+      "group": "Rede",
+      "label": "Rotas",
+      "command": "netstat -rn"
+    },
+    {
+      "group": "Rede",
+      "label": "Sockets em escuta",
+      "command": "sockstat -4 -l"
+    },
+    {
+      "group": "Sistema",
+      "label": "Processos (top)",
+      "command": "top -aSH -n 20"
+    },
+    {
+      "group": "Sistema",
+      "label": "Pacotes instalados",
+      "command": "pkg info | head -n 50"
+    },
+    {
+      "group": "Sistema",
+      "label": "Versão",
+      "command": "cat /etc/version; uname -a"
+    },
+    {
+      "group": "Backup",
+      "label": "Local do config (baixe via SFTP)",
+      "command": "ls -l /conf/config.xml /conf/backup | head"
+    },
+    {
+      "group": "Sistema",
+      "label": "Versão do OPNsense",
+      "command": "opnsense-version"
+    },
+    {
+      "group": "Sistema",
+      "label": "Estado dos serviços",
+      "command": "configctl service list"
+    },
+    {
+      "group": "Firewall",
+      "label": "Log do filtro (últimas 100)",
+      "command": "ls /var/log/filter/ | tail -n 3"
+    }
+  ],
+  "notes": [
+    "Ative o SSH em System > Settings > Administration.",
+    "O menu do console usa a opção 8 para Shell; o TT envia essa escolha sozinho.",
+    "Backup: /conf/config.xml pelo gerenciador de arquivos."
+  ]
+}

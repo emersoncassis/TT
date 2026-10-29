@@ -1,0 +1,22 @@
+{
+  "id": "raspberry-pi",
+  "name": "Raspberry Pi (Raspberry Pi OS)",
+  "description": "Raspberry Pi com Raspberry Pi OS (base Debian): sensores, throttling, firmware e GPIO.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "full",
+  "init_commands": [],
+  "quick_commands": [
+    {"group": "Hardware", "label": "Modelo da placa", "command": "cat /proc/device-tree/model; echo"},
+    {"group": "Hardware", "label": "Temperatura da CPU", "command": "vcgencmd measure_temp"},
+    {"group": "Hardware", "label": "Throttling / subtensão (0x0 = ok)", "command": "vcgencmd get_throttled"},
+    {"group": "Hardware", "label": "Tensões", "command": "vcgencmd measure_volts core"},
+    {"group": "Hardware", "label": "Dispositivos USB", "command": "lsusb"},
+    {"group": "Hardware", "label": "Estado dos pinos GPIO", "command": "pinctrl get"},
+    {"group": "Firmware", "label": "Verificar firmware (EEPROM)", "command": "sudo rpi-eeprom-update"},
+    {"group": "Configuração", "label": "raspi-config", "command": "sudo raspi-config"},
+    {"group": "Sistema", "label": "Memória e disco", "command": "free -h; df -hT"},
+    {"group": "Sistema", "label": "Atualizar índices", "command": "sudo apt update"}
+  ],
+  "notes": ["`pinctrl` existe no Raspberry Pi OS Bookworm ou mais novo; em versões antigas use `raspi-gpio get`."]
+}

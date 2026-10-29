@@ -1,0 +1,11 @@
+{
+  "id": "generic",
+  "name": "Genérico (SSH)",
+  "description": "Qualquer servidor SSH sem ajustes específicos.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "full",
+  "init_commands": [],
+  "quick_commands": [],
+  "notes": []
+}

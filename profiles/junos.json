@@ -1,0 +1,20 @@
+{
+  "id": "junos",
+  "name": "Juniper Junos",
+  "description": "Roteadores e switches Juniper. Sem paginação e atalhos de commit/compare.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "full",
+  "init_commands": ["set cli screen-length 0", "set cli screen-width 0"],
+  "quick_commands": [
+    {"group": "Sistema", "label": "Versão", "command": "show version"},
+    {"group": "Sistema", "label": "Alarmes", "command": "show system alarms"},
+    {"group": "Sistema", "label": "Hardware", "command": "show chassis hardware"},
+    {"group": "Interfaces", "label": "Interfaces (terse)", "command": "show interfaces terse"},
+    {"group": "Rotas", "label": "Tabela de rotas", "command": "show route"},
+    {"group": "Configuração", "label": "Config em formato set", "command": "show configuration | display set"},
+    {"group": "Configuração", "label": "Diferenças pendentes", "command": "show | compare"},
+    {"group": "Logs", "label": "Últimas 100 mensagens", "command": "show log messages | last 100"}
+  ],
+  "notes": ["Para NETCONF habilite `set system services netconf ssh` (porta 830 ou subsistema na 22)."]
+}

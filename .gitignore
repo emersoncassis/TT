@@ -1,0 +1,13 @@
+/target
+/tt-data
+*.db
+*.db-wal
+*.db-shm
+master.key
+
+# Proprietary MobaXterm files must NEVER enter this repository (clean-room rule, see docs/CLEAN-ROOM.md)
+MobaXterm*
+CygUtils*.plugin
+*.msi
+*.plugin
+Prog/

@@ -1,0 +1,31 @@
+{
+  "id": "debian",
+  "name": "Debian / Ubuntu / Linux",
+  "description": "Servidores Linux baseados em Debian (Ubuntu, Proxmox, Raspberry sem extras).",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "full",
+  "init_commands": [],
+  "quick_commands": [
+    {"group": "Sistema", "label": "Versão do SO e kernel", "command": "uname -a; cat /etc/os-release"},
+    {"group": "Sistema", "label": "Uptime e carga", "command": "uptime"},
+    {"group": "Sistema", "label": "Memória", "command": "free -h"},
+    {"group": "Sistema", "label": "Discos e partições", "command": "df -hT; lsblk"},
+    {"group": "Pacotes", "label": "Atualizar índices (apt update)", "command": "sudo apt update"},
+    {"group": "Pacotes", "label": "Listar atualizações pendentes", "command": "apt list --upgradable"},
+    {"group": "Pacotes", "label": "Atualizar tudo (apt full-upgrade)", "command": "sudo apt full-upgrade", "dangerous": true},
+    {"group": "Serviços", "label": "Serviços com falha", "command": "systemctl --failed"},
+    {"group": "Serviços", "label": "Status de um serviço", "command": "systemctl status {{servico}} --no-pager"},
+    {"group": "Serviços", "label": "Erros do boot atual", "command": "journalctl -p err -b --no-pager | tail -n 100"},
+    {"group": "Serviços", "label": "Seguir log de um serviço", "command": "journalctl -u {{servico}} -f"},
+    {"group": "Rede", "label": "Interfaces (resumo)", "command": "ip -br address"},
+    {"group": "Rede", "label": "Rotas", "command": "ip route"},
+    {"group": "Rede", "label": "Portas em escuta", "command": "sudo ss -tulpn"},
+    {"group": "Segurança", "label": "Firewall UFW", "command": "sudo ufw status verbose"},
+    {"group": "Segurança", "label": "Regras nftables", "command": "sudo nft list ruleset"},
+    {"group": "Segurança", "label": "Últimos logins", "command": "last -n 20"},
+    {"group": "Segurança", "label": "Tentativas de SSH falhas", "command": "sudo journalctl -u ssh --no-pager | grep -i 'failed' | tail -n 30"},
+    {"group": "Docker", "label": "Containers", "command": "docker ps -a"}
+  ],
+  "notes": ["Comandos com sudo pedem a senha do usuário no próprio terminal."]
+}

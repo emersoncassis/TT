@@ -1,0 +1,12 @@
+{
+  "id": "netconf",
+  "name": "NETCONF (RFC 6241/6242)",
+  "description": "Qualquer equipamento com NETCONF sobre SSH (subsistema netconf, porta 830). Abre o console XML em vez de um shell.",
+  "default_port": 830,
+  "pty": false,
+  "sftp": "none",
+  "mode": "netconf",
+  "init_commands": [],
+  "quick_commands": [],
+  "notes": ["Suporta framing 1.0 (]]>]]>) e 1.1 (chunked), conforme as capabilities negociadas no <hello>."]
+}

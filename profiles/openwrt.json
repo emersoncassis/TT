@@ -1,0 +1,31 @@
+{
+  "id": "openwrt",
+  "name": "OpenWrt",
+  "description": "Roteadores com OpenWrt (BusyBox/ash + Dropbear). Comandos uci, logread, ubus e init.d.",
+  "default_port": 22,
+  "pty": true,
+  "sftp": "scp_only",
+  "init_commands": [],
+  "quick_commands": [
+    {"group": "Sistema", "label": "Informações da placa e release", "command": "ubus call system board"},
+    {"group": "Sistema", "label": "Carga, memória e disco", "command": "cat /proc/loadavg; free; df -h"},
+    {"group": "Configuração (uci)", "label": "Mostrar rede", "command": "uci show network"},
+    {"group": "Configuração (uci)", "label": "Mostrar Wi-Fi", "command": "uci show wireless"},
+    {"group": "Configuração (uci)", "label": "Mostrar firewall", "command": "uci show firewall"},
+    {"group": "Configuração (uci)", "label": "Alterações pendentes", "command": "uci changes"},
+    {"group": "Configuração (uci)", "label": "Aplicar (commit) tudo", "command": "uci commit", "dangerous": true},
+    {"group": "Serviços", "label": "Recarregar rede", "command": "/etc/init.d/network reload", "dangerous": true},
+    {"group": "Serviços", "label": "Estado do Wi-Fi", "command": "wifi status"},
+    {"group": "Logs", "label": "Últimas 100 linhas do log", "command": "logread | tail -n 100"},
+    {"group": "Logs", "label": "Seguir o log", "command": "logread -f"},
+    {"group": "Rede", "label": "Interfaces (resumo)", "command": "ip -br address"},
+    {"group": "Rede", "label": "Clientes DHCP", "command": "cat /tmp/dhcp.leases"},
+    {"group": "Pacotes", "label": "Atualizar lista (opkg)", "command": "opkg update"},
+    {"group": "Pacotes", "label": "Atualizar lista (apk, releases novas)", "command": "apk update"},
+    {"group": "Backup", "label": "Gerar backup em /tmp", "command": "sysupgrade -b /tmp/backup-$(date +%F).tar.gz && ls -l /tmp/backup-*.tar.gz"}
+  ],
+  "notes": [
+    "O Dropbear não inclui servidor SFTP por padrão. Para usar o gerenciador de arquivos instale `openssh-sftp-server` (opkg install openssh-sftp-server).",
+    "Releases novas do OpenWrt trocam opkg por apk; use o comando que existir no seu firmware."
+  ]
+}
