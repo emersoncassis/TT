@@ -1,97 +1,168 @@
+<div align="center">
+
+<img src="ui/assets/tt-logo.svg" alt="TT" width="96" height="96">
+
 # TT — Terminal Tools
 
-**Estação de trabalho SSH livre e aberta, para o técnico de campo, o analista de redes e o sysadmin — no seu computador ou acessada pela rede.**
+**Estação de trabalho SSH livre e aberta para o técnico de campo, o analista de redes e o sysadmin.**
+No seu computador ou acessada pela rede, com usuários, túneis, SFTP e um assistente de IA que **só sugere**.
 
-> 🚧 **Em pleno desenvolvimento (v0.2).** O que está aqui já funciona, mas ainda falta muita coisa e **a comunidade é bem-vinda para ajudar**: testar em equipamentos reais, corrigir comandos, criar perfis, traduzir e implementar o roadmap. Veja [Como ajudar](#como-ajudar).
+[![CI](https://github.com/emersoncassis/TT/actions/workflows/ci.yml/badge.svg)](https://github.com/emersoncassis/TT/actions/workflows/ci.yml)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-c8b077.svg)](LICENSE)
+![Rust 2024](https://img.shields.io/badge/Rust-2024-orange.svg)
+![Status: em desenvolvimento](https://img.shields.io/badge/status-em%20desenvolvimento-yellow.svg)
+[![PRs bem-vindos](https://img.shields.io/badge/PRs-bem--vindos-brightgreen.svg)](CONTRIBUTING.md)
 
-![Terminal e comandos prontos por tipo de equipamento](docs/screenshots/04-terminal-e-comandos.png)
+[Início rápido](#início-rápido) · [Telas](#telas) · [Recursos](#recursos) · [Segurança](#segurança) · [Roadmap](#roadmap) · [Como ajudar](#como-ajudar)
 
-## Que dor o TT resolve
+<br>
 
-- **"Cada equipamento tem um jeito diferente de entrar."** MikroTik quer `+ct` no usuário, Cisco pede `terminal length 0` e `enable`, pfSense cai num menu e você precisa digitar `8`, OpenWrt não tem SFTP por padrão. O TT conhece essas manhas e já faz isso por você, por **tipo de equipamento**.
-- **"Eu esqueço o comando."** Cada tipo traz comandos prontos e agrupados (diagnóstico, rede, firewall, backup…), com os perigosos marcados e pedindo confirmação.
-- **"Minhas senhas e IPs estão espalhados em planilhas e no bloco de notas."** Sessões organizadas em pastas, com segredos **criptografados** — e acesso pela rede com **usuário e senha** para a equipe toda, cada um com seus próprios hosts.
-- **"Preciso acessar de qualquer lugar, mas quem fala com os equipamentos é a máquina da rede interna."** No modo servidor, só o TT precisa alcançar os equipamentos; o técnico usa o navegador.
-- **"As ferramentas boas são pagas ou fechadas."** O TT é **MIT**: use, modifique, ponha a sua logo, distribua.
+<img src="docs/screenshots/05-terminal-e-comandos.png" alt="Terminal SSH com comandos prontos por tipo de equipamento" width="880">
 
-## Para quem é
+</div>
 
-Técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedores e ISPs pequenos, times de TI de empresas, sysadmins e homelabbers, estudantes de redes. Se você abre SSH em Linux, roteadores, firewalls e switches no dia a dia, é para você.
+> [!NOTE]
+> **Em pleno desenvolvimento (v0.2).** O que está aqui já funciona, mas ainda falta muita coisa, e **a comunidade é bem-vinda**: testar em equipamentos reais, corrigir comandos, criar perfis, traduzir e implementar o roadmap. Veja [Como ajudar](#como-ajudar).
 
-## Dois modos, um programa
+## Por que o TT
+
+| A dor | O que o TT faz |
+|---|---|
+| Cada equipamento entra de um jeito: MikroTik quer `+ct` no usuário, Cisco pede `terminal length 0` e `enable`, pfSense cai num menu e você digita `8`. | Conhece essas manhas e faz por você, por **tipo de equipamento**. |
+| "Eu esqueço o comando." | Comandos prontos e agrupados (diagnóstico, rede, firewall, backup…), com os perigosos marcados e pedindo confirmação. |
+| Senhas e IPs espalhados em planilhas e bloco de notas. | Sessões em pastas, segredos **criptografados**, e acesso pela rede com **usuário e senha** para a equipe, cada um com seus hosts. |
+| Preciso acessar de qualquer lugar, mas quem enxerga os equipamentos é a rede interna. | No modo servidor só o TT alcança os equipamentos; o técnico usa o navegador. |
+| Ferramentas boas são pagas ou fechadas. | **MIT**: use, modifique, troque a logo, distribua. |
+
+**Para quem:** técnicos de campo e integradores (CFTV, redes, segurança eletrônica), provedores e ISPs pequenos, times de TI, sysadmins, homelabbers e estudantes de redes.
+
+## Início rápido
+
+Requisitos: [Rust](https://rustup.rs) estável (edição 2024).
+
+```bash
+git clone https://github.com/emersoncassis/TT.git
+cd TT
+
+cargo run --release -- local                    # uso individual: abre o navegador já logado
+# ou
+cargo run --release -- serve --bind 127.0.0.1:8443   # modo servidor, acesso por usuário e senha
+```
+
+No modo servidor, o **primeiro acesso cria o administrador**, que depois cria os demais usuários. Ainda não há binários prontos nem app desktop (veja o [roadmap](#roadmap)).
 
 | Modo | Comando | Para quê |
-|------|---------|----------|
-| **Local** | `tt local` | Uso individual. Abre o navegador já logado (sem senha), escuta só em `127.0.0.1`. |
-| **Servidor web** | `tt serve --bind 0.0.0.0:8443` | A sua máquina (ou um servidor) fala SSH com os equipamentos; o painel é acessado pela rede com **usuário e senha**. O primeiro acesso cria o **administrador**, que cria os demais usuários. |
+|---|---|---|
+| **Local** | `tt local` | Uso individual. Escuta só em `127.0.0.1`, sem senha (token de uso único). |
+| **Servidor web** | `tt serve` | O servidor fala SSH com os equipamentos; o painel é acessado pela rede, com usuários. |
 
 ## Telas
 
-| | |
-|---|---|
-| ![Primeiro acesso](docs/screenshots/01-primeiro-acesso.png) **Primeiro acesso:** cria o administrador | ![Cadastro de host](docs/screenshots/02-cadastro-host-mikrotik.png) **Cadastro por tipo de equipamento**, com avisos específicos |
-| ![Chave do host](docs/screenshots/03-confirmar-chave-do-host.png) **Confirmação da chave do host** (alerta forte se mudar) | ![SFTP](docs/screenshots/05-arquivos-sftp.png) **Arquivos por SFTP** ao lado do terminal |
-| ![Usuários](docs/screenshots/06-usuarios.png) **Administração de usuários** | ![Assistente](docs/screenshots/07-assistente-ia.png) **Assistente de IA** sugerindo comandos (resposta ilustrativa de um modelo simulado) |
-| ![Túneis](docs/screenshots/08-tuneis.png) **Túneis SSH** | ![IA e MCP](docs/screenshots/09-ia-e-mcp.png) **IA e MCP:** chave própria e tokens |
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/01-primeiro-acesso.png" alt="Primeiro acesso"><br><b>Primeiro acesso</b>: cria o administrador</td>
+<td width="50%"><img src="docs/screenshots/02-login.png" alt="Login"><br><b>Login</b> com usuário e senha</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/03-cadastro-host.png" alt="Cadastro de host"><br><b>Cadastro por tipo de equipamento</b>, com avisos específicos</td>
+<td><img src="docs/screenshots/04-confirmar-chave-do-host.png" alt="Confirmação da chave do host"><br><b>Chave do host</b>: confiar na primeira vez, alerta forte se mudar</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/05-terminal-e-comandos.png" alt="Terminal e comandos"><br><b>Operação</b>: terminal, abas e comandos prontos</td>
+<td><img src="docs/screenshots/06-assistente-ia.png" alt="Assistente de IA"><br><b>Assistente de IA</b> sugerindo comandos<sup>*</sup></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/07-arquivos-sftp.png" alt="SFTP"><br><b>Arquivos por SFTP</b> ao lado do terminal</td>
+<td><img src="docs/screenshots/08-usuarios.png" alt="Gestão de usuários"><br><b>Gestão de usuários</b> (administrador)</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/09-tuneis.png" alt="Túneis SSH"><br><b>Túneis SSH</b>: local e SOCKS5</td>
+<td><img src="docs/screenshots/10-ia-e-mcp.png" alt="IA e MCP"><br><b>IA e MCP</b>: chave própria e tokens</td>
+</tr>
+</table>
 
-## O que já funciona (v0.1)
+<sub>* A resposta do assistente nesse print vem de um modelo simulado, só para ilustrar a tela.</sub>
 
-- Terminal SSH no navegador (xterm.js), abas, redimensionamento; login por **senha, chave privada e keyboard-interactive**.
-- **Verificação de chave do host** (confiar na primeira vez; alerta forte se a chave mudar).
-- Gerenciador de sessões com pastas e busca; **segredos criptografados em repouso** (XChaCha20-Poly1305).
-- **Gerenciador de arquivos SFTP** (listar, enviar, baixar, criar pasta, renomear, excluir).
-- **Perfis de equipamento:** Debian/Ubuntu, Raspberry Pi, OpenWrt, pfSense, OPNsense, MikroTik, Cisco IOS/IOS-XE, Juniper Junos, Huawei VRP, NETCONF e genérico — veja [docs/PLATFORMS.md](docs/PLATFORMS.md).
+## Recursos
+
+- **Terminal SSH no navegador** (xterm.js) com abas; login por senha, chave privada e keyboard-interactive.
+- **Perfis de equipamento:** Debian/Ubuntu, Raspberry Pi, OpenWrt, pfSense, OPNsense, MikroTik, Cisco IOS/IOS-XE, Juniper Junos, Huawei VRP, NETCONF e genérico. Veja [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - **Console NETCONF** (RFC 6241/6242, framing 1.0 e 1.1).
-- Usuários e administrador, senhas com Argon2id, limite de tentativas de login, proteção contra requisições cross-site.
-- **Túneis SSH:** encaminhamento local (porta → destino) e proxy **SOCKS5** dinâmico, com início/parada pelo painel.
-- **Assistente de IA** ao lado do terminal: lê a tela (segredos mascarados antes de sair), explica e **sugere** comandos e boas práticas com a **sua** chave de API. Nunca executa sozinho.
-- **Servidor MCP** (HTTP e stdio): outro assistente de IA pode ler a tela, sugerir comandos (você aprova) e rodar comandos de **leitura** permitidos por tipo de equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
-- Visual escuro com dourado, com marca personalizável (nome, cor, logo) por arquivo, sem recompilar.
+- **SFTP:** listar, enviar, baixar, criar pasta, renomear, excluir.
+- **Túneis SSH:** encaminhamento local e proxy **SOCKS5**, com iniciar e parar pelo painel.
+- **Gerenciador de sessões** com pastas e busca.
+- **Multiusuário:** administrador e usuários, cada um com seus hosts.
+- **Assistente de IA** ao lado do terminal, com a **sua** chave de API (Anthropic ou compatível com OpenAI): lê a tela, explica e **sugere**. Nunca executa sozinho.
+- **Servidor MCP** (HTTP e stdio): outra IA pode ler a tela, sugerir comandos e rodar comandos de **leitura** permitidos por equipamento, com tokens pessoais e auditoria. Veja [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md) e a [skill](skill/tt-network-assistant/SKILL.md).
+- **Marca personalizável** (nome, cor, logo) por arquivo, sem recompilar.
 
-## O que ainda falta (roadmap)
+<details>
+<summary><b>Como as peças se encaixam</b></summary>
 
-Túnel remoto (`-R`), multi-execução, macros, salto por bastion, gestão de chaves, TLS nativo e 2FA, gravação de sessões, telnet/serial, X11, RDP/VNC **app desktop empacotado**, upload em streaming, respostas da IA em *streaming* e tradução da interface. Detalhes em [docs/SPEC.md](docs/SPEC.md) e [docs/AI-AND-MCP.md](docs/AI-AND-MCP.md).
+```mermaid
+flowchart LR
+  B[Navegador<br/>xterm.js] -- HTTPS + WebSocket --> S[tt serve]
+  A[Assistente de IA<br/>via MCP] -- Bearer token --> S
+  S -- SSH / SFTP / túneis --> D[(Equipamentos<br/>Linux · MikroTik · Cisco · pfSense…)]
+  S --- DB[(SQLite + master.key<br/>segredos criptografados)]
+  S -. chave do usuário .-> L[API do modelo de IA]
+```
+
+</details>
+
+## Segurança
+
+- Senhas de usuários com **Argon2id**; segredos de hosts com **XChaCha20-Poly1305** (chave mestra em `master.key`, permissão 0600).
+- Sessão por cookie `HttpOnly` + `SameSite=Strict`; verificação de `Origin` em requisições que alteram estado e em WebSockets; bloqueio após 8 tentativas de login por IP.
+- **Chave de host:** SFTP, túneis e MCP só conectam a hosts já confiados em um terminal.
+- **IA:** segredos (senhas, chaves, `secret`, `snmp community`, PSK, tokens) são mascarados antes de sair; o texto da tela é tratado como dado não confiável; a chave de API nunca volta ao navegador; endereço de API personalizado só para administradores.
+- **MCP:** só executa comandos de uma lista de leitura por equipamento; tokens `read` ou `exec`, guardados só como hash; tudo é auditado.
+- **Túneis** escutam só em `127.0.0.1` do servidor (use `--allow-public-tunnels` para liberar outros endereços).
+
+> [!WARNING]
+> O TT fala HTTP simples. Para acesso pela rede coloque-o atrás de um proxy HTTPS (Caddy, nginx, Traefik) e use `--secure-cookies`. **Faça backup de `master.key` junto com `tt.db`**: sem a chave mestra os segredos salvos não são recuperáveis.
+
+Relatos de vulnerabilidade: [SECURITY.md](SECURITY.md).
+
+## Roadmap
+
+- [x] Terminal, sessões, usuários, SFTP, perfis por equipamento, NETCONF
+- [x] Túneis local e SOCKS5
+- [x] Assistente de IA assistido e servidor MCP
+- [ ] App desktop empacotado (Tauri) e binários prontos
+- [ ] Túnel remoto (`-R`), salto por bastion, multi-execução, macros
+- [ ] TLS nativo, 2FA, gravação de sessões
+- [ ] Telnet/serial, X11, RDP/VNC
+- [ ] Upload em streaming, respostas da IA em streaming, tradução da interface
+
+Detalhes em [docs/SPEC.md](docs/SPEC.md).
 
 ## Como ajudar
 
-- **Teste em equipamento real** (MikroTik, Cisco, Huawei, Junos, pfSense, OPNsense, OpenWrt, Raspberry) e abra uma issue dizendo o que funcionou ou falhou. Os comandos dos perfis foram escritos pela documentação pública e **ainda não foram validados em hardware**.
-- **Crie ou melhore perfis de equipamento:** é só um arquivo JSON em `profiles/`.
+- **Teste em equipamento real** (MikroTik, Cisco, Huawei, Junos, pfSense, OPNsense, OpenWrt, Raspberry) e abra uma issue com o que funcionou ou falhou. Os comandos dos perfis vêm da documentação pública e **ainda não foram validados em hardware**.
+- **Crie ou melhore perfis:** é só um arquivo JSON em `profiles/`.
 - **Implemente algo do roadmap** ou traduza a interface.
-- **Aviso de segurança?** Veja [SECURITY.md](SECURITY.md). Regras de contribuição e a política clean-room: [CONTRIBUTING.md](CONTRIBUTING.md) e [docs/CLEAN-ROOM.md](docs/CLEAN-ROOM.md).
+- Regras de contribuição e a política clean-room: [CONTRIBUTING.md](CONTRIBUTING.md) e [docs/CLEAN-ROOM.md](docs/CLEAN-ROOM.md).
 
 > Projeto *clean-room*: reimplementa **funcionalidades** de uma workstation SSH tradicional, sem copiar código, arte, nomes ou textos de nenhum software.
 
-## Rodando
+<details>
+<summary><b>Configuração: dados, marca e novos equipamentos</b></summary>
 
-```bash
-cargo run --release -- local                       # modo local
-cargo run --release -- --data ./tt-data serve      # modo servidor em 127.0.0.1:8443
-```
+**Dados.** Banco, chave mestra, perfis próprios e marca ficam em `--data` (ou `TT_DATA`, padrão `./tt-data`).
 
-Dados (banco, chave mestra, perfis próprios, marca) ficam em `--data` (ou `TT_DATA`). **Faça backup de `master.key` junto com `tt.db`**: sem a chave mestra os segredos salvos não são recuperáveis.
-
-### Expondo na rede com segurança
-
-O TT fala HTTP simples. Túneis escutam só em `127.0.0.1` do servidor (use `--allow-public-tunnels` para liberar outras interfaces). Para acesso pela rede coloque-o atrás de um proxy HTTPS (Caddy, nginx, Traefik) e use `--secure-cookies`. O TT avisa quando escuta fora do loopback sem isso.
-
-### Personalizando a marca
-
-Crie `tt-data/branding.json`:
+**Marca.** Crie `tt-data/branding.json`:
 
 ```json
 { "name": "Minha Marca", "tagline": "Ferramentas de campo", "accent": "#00a3ff", "logo": true }
 ```
 
-e coloque `tt-data/logo.svg` (ou `.png`, `.webp`, `.jpg`). Para mudar todo o tema edite as variáveis em `ui/theme.css`.
+e coloque `tt-data/logo.svg` (ou `.png`, `.webp`, `.jpg`). Para mudar o tema inteiro edite as variáveis em `ui/theme.css`.
 
-### Adicionando um tipo de equipamento
+**Novo tipo de equipamento.** Crie um JSON em `tt-data/profiles/` (ou envie um PR em `profiles/`) no formato dos existentes. Um perfil próprio com o mesmo `id` substitui o embutido.
 
-Crie um JSON em `tt-data/profiles/` (ou envie um PR em `profiles/`) no formato dos arquivos existentes. Perfis próprios com o mesmo `id` substituem os embutidos.
-
-## Segurança em resumo
-
-Senhas de usuários: Argon2id. Segredos de hosts: XChaCha20-Poly1305 com chave mestra em `master.key` (0600). Sessão por cookie `HttpOnly` + `SameSite=Strict`, verificação de `Origin` em requisições que alteram estado e em WebSockets, bloqueio após 8 tentativas de login por IP. SFTP, túneis e o MCP só conectam a hosts cuja chave já foi confiada em um terminal. Segredos são mascarados antes de irem para a IA; o MCP só executa comandos de uma lista de leitura por tipo de equipamento. Relatos de vulnerabilidade: veja [SECURITY.md](SECURITY.md).
+</details>
 
 ## Licença
 
-MIT — use, modifique, troque a logo, distribua. Veja [LICENSE](LICENSE).
+[MIT](LICENSE): use, modifique, troque a logo, distribua.
