@@ -340,6 +340,45 @@ async fn free_models(Auth(_u): Auth) -> ApiResult<Json<Value>> {
     Ok(Json(json!({ "models": out })))
 }
 
+/// Pulls a readable message out of the different error shapes providers use.
+fn provider_error_text(v: &Value, raw: &str) -> String {
+    let e = if v.is_array() { &v[0] } else { v };
+    let m = e["error"]["message"].as_str().or_else(|| e["error"].as_str()).or_else(|| e["message"].as_str()).or_else(|| e["error"]["metadata"]["raw"].as_str());
+    match m {
+        Some(t) if !t.is_empty() => t.chars().take(300).collect(),
+        _ => raw.trim().chars().take(300).collect::<String>(),
+    }
+}
+
+/// Sends an LLM request; retries briefly on overload (429/5xx) because free/shared models often answer 503 for a moment.
+async fn send_llm(req: reqwest::RequestBuilder) -> Result<Value, ApiError> {
+    let bad_gateway = |m: String| ApiError(StatusCode::BAD_GATEWAY, m);
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let r = req.try_clone().ok_or_else(|| bad_gateway("internal: request not repeatable".into()))?;
+        let res = r.send().await.map_err(|e| bad_gateway(format!("AI request failed: {}", e.without_url())))?;
+        let status = res.status();
+        let raw = res.text().await.map_err(|e| bad_gateway(format!("AI response unreadable: {}", e.without_url())))?;
+        let v: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        if status.is_success() {
+            return Ok(v);
+        }
+        let retryable = matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504);
+        if retryable && attempt < 3 {
+            tokio::time::sleep(Duration::from_secs(2 * attempt)).await;
+            continue;
+        }
+        let hint = match status.as_u16() {
+            503 | 429 => " The model is overloaded or rate-limited right now: wait a bit or pick another model (free models are often busy).",
+            401 | 403 => " Check the API key in AI & MCP.",
+            404 => " Check the model name.",
+            _ => "",
+        };
+        return Err(bad_gateway(format!("AI provider error {status}: {}.{hint}", provider_error_text(&v, &raw).trim_end_matches('.'))));
+    }
+}
+
 pub async fn call_llm(s: &Shared, user_id: i64, system: &str, msgs: &[(String, String)]) -> Result<String, ApiError> {
     let a = s.db.get_ai(user_id)?;
     if a.key_enc.is_empty() {
@@ -366,25 +405,15 @@ pub async fn call_llm(s: &Shared, user_id: i64, system: &str, msgs: &[(String, S
         if a.provider == "openrouter" {
             req = req.header("X-Title", "TT Terminal Tools").header("HTTP-Referer", "https://github.com/emersoncassis/TT");
         }
-        let res = req.send().await.map_err(|e| bad_gateway(format!("AI request failed: {}", e.without_url())))?;
-        let status = res.status();
-        let v: Value = res.json().await.map_err(|e| bad_gateway(format!("AI response unreadable: {}", e.without_url())))?;
-        if !status.is_success() {
-            return Err(bad_gateway(format!("AI provider error {status}: {}", v["error"]["message"].as_str().unwrap_or("unknown"))));
-        }
+        let v = send_llm(req).await?;
         v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string()
     } else {
         let base = if a.base_url.is_empty() { "https://api.anthropic.com".to_string() } else { a.base_url.clone() };
         let model = if a.model.is_empty() { "claude-sonnet-5-5".to_string() } else { a.model.clone() };
         let m: Vec<Value> = msgs.iter().map(|(r, c)| json!({"role":r,"content":c})).collect();
-        let res = client.post(format!("{base}/v1/messages")).header("x-api-key", &key).header("anthropic-version", "2023-06-01")
-            .json(&json!({"model":model,"max_tokens":2048,"system":system,"messages":m})).send().await
-            .map_err(|e| bad_gateway(format!("AI request failed: {}", e.without_url())))?;
-        let status = res.status();
-        let v: Value = res.json().await.map_err(|e| bad_gateway(format!("AI response unreadable: {}", e.without_url())))?;
-        if !status.is_success() {
-            return Err(bad_gateway(format!("AI provider error {status}: {}", v["error"]["message"].as_str().unwrap_or("unknown"))));
-        }
+        let req = client.post(format!("{base}/v1/messages")).header("x-api-key", &key).header("anthropic-version", "2023-06-01")
+            .json(&json!({"model":model,"max_tokens":2048,"system":system,"messages":m}));
+        let v = send_llm(req).await?;
         v["content"].as_array().map(|a| a.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("")).unwrap_or_default()
     };
     if text.is_empty() {
